@@ -55,7 +55,8 @@ for dept in range(n_departments):
         # Convert ke int safely
         DEMAND[dept, :, :] = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
 
-
+        st.write(f"Dept {dept+1} DEMAND preview:")
+              st.dataframe(DEMAND[dept, :, :])
 # ================================
 # FITNESS FUNCTION
 # ================================
