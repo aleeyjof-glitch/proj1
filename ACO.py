@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import os
 
 # ================================
 # CONFIG
@@ -22,34 +23,26 @@ n_periods = 28
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 # ================================
-# UPLOAD DEPARTMENT EXCEL FILES
+# LOAD DEMAND FROM FILES IN REPO
 # ================================
-st.sidebar.header("Upload Department Demand Excel Files")
-uploaded_files = []
+st.sidebar.header("Department Demand Files (Loaded from repo)")
 
-for dept in range(n_departments):
-    uploaded_file = st.sidebar.file_uploader(
-        label=f"Upload Excel for Department {dept+1}",
-        type=["xlsx", "xls"],
-        key=f"dept_{dept+1}"
-    )
-    uploaded_files.append(uploaded_file)
+# Contoh nama folder & file
+data_folder = "data"  # letak semua Excel Dept1.xlsx ... Dept6.xlsx dalam folder 'data'
+file_names = [f"Dept{i+1}.xlsx" for i in range(n_departments)]
 
-all_files_uploaded = all(f is not None for f in uploaded_files)
-
-if all_files_uploaded:
-    for dept, file in enumerate(uploaded_files):
-        df = pd.read_excel(file, header=None)
-        df = df.dropna(how='all')  # buang baris kosong
-
+for dept, file_name in enumerate(file_names):
+    file_path = os.path.join(data_folder, file_name)
+    if not os.path.exists(file_path):
+        st.error(f"File {file_name} tidak dijumpai dalam folder '{data_folder}'!")
+    else:
+        df = pd.read_excel(file_path, header=None).dropna(how='all')
         if df.shape != (n_days, n_periods):
             st.error(f"Dept {dept+1} file shape mismatch! Expected ({n_days},{n_periods}), got {df.shape}")
         else:
             DEMAND[dept, :, :] = df.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
             st.write(f"Dept {dept+1} DEMAND preview:")
             st.dataframe(DEMAND[dept, :, :])
-else:
-    st.warning("Please upload all 6 department Excel files to proceed.")
 
 
 # ================================
@@ -59,7 +52,6 @@ def fitness(schedule, demand, max_hours):
     penalty = 0
     n_departments, days, periods, employees = schedule.shape
 
-    # Hard constraint: meet demand
     for dept in range(n_departments):
         for d in range(days):
             for t in range(periods):
@@ -68,14 +60,12 @@ def fitness(schedule, demand, max_hours):
                 if assigned < required:
                     penalty += (required - assigned) * 1000
 
-    # Hard constraint: max hours per employee
     for dept in range(n_departments):
         for e in range(employees):
             total_hours = np.sum(schedule[dept, :, :, e])
             if total_hours > max_hours:
                 penalty += (total_hours - max_hours) * 200
 
-    # Soft constraint: fair workload
     for dept in range(n_departments):
         workloads = [np.sum(schedule[dept, :, :, e]) for e in range(employees)]
         penalty += np.var(workloads) * 10
@@ -89,7 +79,6 @@ def fitness(schedule, demand, max_hours):
 def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, beta, evaporation, Q, max_hours):
     n_departments, days, periods = demand.shape
     pheromone = np.ones((n_departments, days, periods, n_employees))
-
     best_schedule = None
     best_score = float("inf")
 
@@ -99,7 +88,6 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, beta, evaporation,
 
         for ant in range(n_ants):
             schedule = np.zeros((n_departments, days, periods, n_employees))
-
             for dept in range(n_departments):
                 for d in range(days):
                     for t in range(periods):
@@ -116,9 +104,7 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, beta, evaporation,
                 best_score = score
                 best_schedule = schedule.copy()
 
-        # Evaporation
         pheromone *= (1 - evaporation)
-        # Pheromone update
         for sol, score in zip(all_solutions, all_scores):
             pheromone += (Q / (1 + score)) * sol
 
@@ -170,7 +156,6 @@ if "best_schedule" in st.session_state:
         st.markdown(f"## Department {dept+1}")
         staff_matrix = best_schedule[dept, :, :, :]
 
-        # Per day table
         for d in range(n_days):
             assigned_row = np.sum(staff_matrix[d, :, :], axis=1)
             required_row = DEMAND[dept, d, :].astype(int)
@@ -190,7 +175,7 @@ if "best_schedule" in st.session_state:
             st.dataframe(df_day)
 
         # ================================
-        # SHORTAGE SUMMARY (reset per department)
+        # SHORTAGE SUMMARY
         # ================================
         st.subheader("⚠️ Shortage Summary per Department per Day")
         daily_shortage_summary = []
@@ -242,4 +227,3 @@ if "best_schedule" in st.session_state:
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
     fig.colorbar(im, ax=ax, label="Number of Employees Assigned")
     st.pyplot(fig)
-
