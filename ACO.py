@@ -27,8 +27,7 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 # ================================
 st.sidebar.header("Department Demand Files (Loaded from repo)")
 
-# Contoh nama folder & file
-data_folder = "data"  # letak semua Excel Dept1.xlsx ... Dept6.xlsx dalam folder 'data'
+data_folder = "Demand"  # letak semua Excel Dept1.xlsx ... Dept6.xlsx dalam folder 'data'
 file_names = [f"Dept{i+1}.xlsx" for i in range(n_departments)]
 
 for dept, file_name in enumerate(file_names):
