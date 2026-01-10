@@ -51,12 +51,21 @@ for dept in range(n_departments):
     DEMAND[dept, :, :] = df_subset.values
 
     # Buat Excel-style DataFrame preview
-    df_display = pd.DataFrame(np.zeros((n_days+1, n_periods+1), dtype=object))  # +1 untuk header
-    df_display.iloc[0,1:] = np.arange(1, n_periods+1)     # baris pertama: Period 1..28
-    df_display.iloc[1:,0] = np.arange(1, n_days+1)       # kolum pertama: Day 1..7
-    df_display.iloc[1:,1:] = df_subset.values            # demand values
+    df_display = pd.DataFrame(index=range(n_days+1), columns=range(n_periods+1), dtype=object)
+
+    # Baris pertama: kosong di kiri atas, Period 1..28
+    df_display.iloc[0,0] = ""
+    df_display.iloc[0,1:] = np.arange(1, n_periods+1)
+
+    # Kolum pertama: Day 1..7
+    df_display.iloc[1:,0] = np.arange(1, n_days+1)
+
+    # Demand values
+    df_display.iloc[1:,1:] = df_subset.values
+
     st.write(f"Dept {dept+1} DEMAND preview:")
     st.dataframe(df_display)
+
 # ================================
 # FITNESS FUNCTION
 # ================================
