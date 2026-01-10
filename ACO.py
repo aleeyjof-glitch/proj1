@@ -28,6 +28,9 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 # ================================
 # LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
 # ================================
+# ================================
+# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
+# ================================
 st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
@@ -50,14 +53,14 @@ for dept in range(n_departments):
     # Simpan ke numpy DEMAND
     DEMAND[dept, :, :] = df_subset.values
 
-    # Buat DataFrame preview dengan Excel-style (kosong di (1,1))
-    df_display = df_subset.copy()
-    df_display.insert(0, "Day/Period", np.arange(1, n_days+1))  # Kolum pertama = Day 1–7
-    header = [""] + list(np.arange(1, n_periods+1))  # Baris pertama = Period 1–28
-    df_display.columns = header
-
+    # Buat Excel-style DataFrame preview
+    df_display = pd.DataFrame(np.zeros((n_days+1, n_periods+1), dtype=object))  # +1 untuk header
+    df_display.iloc[0,1:] = np.arange(1, n_periods+1)     # baris pertama: Period 1..28
+    df_display.iloc[1:,0] = np.arange(1, n_days+1)       # kolum pertama: Day 1..7
+    df_display.iloc[1:,1:] = df_subset.values            # demand values
     st.write(f"Dept {dept+1} DEMAND preview:")
     st.dataframe(df_display)
+)
 
 # ================================
 # FITNESS FUNCTION
