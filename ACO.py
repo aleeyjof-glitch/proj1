@@ -18,10 +18,12 @@ sheet_name = "sheet1"
 st.title("🐜 ACO Employee Shift Scheduling")
 
 # ================================
-# LOAD DATASET
+# LOAD DATASET (Safe for Streamlit)
 # ================================
-df = pd.read_excel(DATA_FILE, sheet_name = "sheet1")
-
+xls = pd.ExcelFile(DATA_FILE)  # baca semua sheet
+sheet_choice = st.selectbox("Select sheet to load:", xls.sheet_names)  # dropdown untuk pilih sheet
+df = pd.read_excel(DATA_FILE, sheet_name=sheet_choice)
+st.success(f"Dataset loaded from {DATA_FILE}, sheet: {sheet_choice}")
 # ================================
 # CONVERT TO 3D NUMPY ARRAY: dept x day x period
 # ================================
