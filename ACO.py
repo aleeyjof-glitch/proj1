@@ -34,25 +34,15 @@ n_periods = 28
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 for dept in range(n_departments):
-    # Ambil data dari Excel untuk setiap department
-    dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].fillna(0).values
-
+    dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].values
     st.write(f"Dept {dept+1} original shape:", dept_data.shape)
 
-    # Pastikan dept_data berbentuk (n_days, n_periods)
-    if dept_data.shape != (n_days, n_periods):
-        # Kalau bentuk tak match, kita "pad" atau "truncate" supaya sama bentuk
-        padded = np.zeros((n_days, n_periods))
-        min_rows = min(n_days, dept_data.shape[0])
-        min_cols = min(n_periods, dept_data.shape[1])
-        padded[:min_rows, :min_cols] = dept_data[:min_rows, :min_cols]
-        dept_data = padded
-        st.warning(f"Dept {dept+1} data shape adjusted to: {dept_data.shape}")
-
-    # Convert ke int dan assign ke DEMAND
-    DEMAND[dept, :, :] = dept_data.astype(int)
+    # Safe conversion
+    dept_data_numeric = pd.DataFrame(dept_data).apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
+    DEMAND[dept, :, :] = dept_data_numeric
 
     st.write(f"Dept {dept+1} preview:", DEMAND[dept, :, :])
+
 # ================================
 # FITNESS FUNCTION
 # ================================
