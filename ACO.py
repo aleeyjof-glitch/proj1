@@ -162,7 +162,7 @@ if st.button("Run Scheduling ACO"):
             # Employee assignment per period
             emp_rows = []
             for t in range(DEMAND.shape[2]):
-                emp_assigned = [employee_ids[e] for e in range(n_employees) if staff_matrix[dept, d, t, e]==1]
+                emp_assigned = [employee_ids[e] for e in range(n_employees) if staff_matrix[d, t, e]==1]
                 emp_rows.append(", ".join(emp_assigned) if emp_assigned else "-")
 
             df_day = pd.DataFrame(
