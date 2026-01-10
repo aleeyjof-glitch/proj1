@@ -179,7 +179,7 @@ if st.button("Run Scheduling ACO"):
                     shortage_summary.append([dept+1, d+1, t+1, s])
 
         # Workload summary per employee
-        emp_workload = [np.sum(staff_matrix[dept, :, :, e]) for e in range(n_employees)]
+        emp_workload = [np.sum(staff_matrix[:, :, e]) for e in range(n_employees)]
         for e, w in enumerate(emp_workload):
             workload_summary.append([dept+1, employee_ids[e], w])
 
