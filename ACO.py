@@ -38,25 +38,26 @@ for dept in range(n_departments):
         st.error(f"File {file_path} not found!")
         continue
 
-        # Baca Excel, abaikan header baris pertama (Day/Period)
-        df = pd.read_excel(file_path, header=0)  # gunakan baris pertama sebagai nama kolum
-        df = df.dropna(how='all', axis=0)
-        df = df.dropna(how='all', axis=1)
+    # Baca Excel, gunakan baris pertama sebagai header
+    df = pd.read_excel(file_path, header=0)
+    df = df.dropna(how='all', axis=0)
+    df = df.dropna(how='all', axis=1)
 
-        # Ambil 7 baris pertama dan 28 kolum pertama
-        df_subset = df.iloc[:n_days, :n_periods]
-        df_subset = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
+    # Ambil n_days x n_periods sahaja
+    df_subset = df.iloc[:n_days, :n_periods]
+    df_subset = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
 
-        # Simpan ke numpy DEMAND
-        DEMAND[dept, :, :] = df_subset.values
+    # Simpan ke numpy DEMAND
+    DEMAND[dept, :, :] = df_subset.values
 
-        # Buat table preview dengan Day/Period di sebelah kiri
-        df_display = df_subset.copy()
-        df_display.index = np.arange(1, n_days+1)      # Day 1–7
-        df_display.columns = np.arange(1, n_periods+1)  # Period 1–28
+    # Buat table preview dengan Day/Period di sebelah kiri
+    df_display = df_subset.copy()
+    df_display.index = np.arange(1, n_days+1)      # Day 1–7
+    df_display.columns = np.arange(1, n_periods+1)  # Period 1–28
 
-        st.write(f"Dept {dept+1} DEMAND preview:")
-        st.dataframe(DEMAND[dept, :, :])
+    st.write(f"Dept {dept+1} DEMAND preview:")
+    st.dataframe(df_display)
+
 # ================================
 # FITNESS FUNCTION
 # ================================
@@ -65,6 +66,7 @@ def fitness(schedule, demand, max_hours):
     n_departments, days, periods, employees = schedule.shape
 
     for dept in range(n_departments):
+        # Hard constraint: meet demand
         for d in range(days):
             for t in range(periods):
                 assigned = np.sum(schedule[dept, d, t, :])
@@ -72,11 +74,13 @@ def fitness(schedule, demand, max_hours):
                 if assigned < required:
                     penalty += (required - assigned) * 1000
 
+        # Hard constraint: max hours per employee
         for e in range(employees):
             total_hours = np.sum(schedule[dept, :, :, e])
             if total_hours > max_hours:
                 penalty += (total_hours - max_hours) * 200
 
+        # Soft constraint: fair workload
         workloads = [np.sum(schedule[dept, :, :, e]) for e in range(employees)]
         penalty += np.var(workloads) * 10
 
@@ -115,7 +119,7 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, beta, evaporation,
                 best_score = score
                 best_schedule = schedule.copy()
 
-        # pheromone update
+        # Pheromone update
         pheromone *= (1 - evaporation)
         for sol, score in zip(all_solutions, all_scores):
             pheromone += (Q / (1 + score)) * sol
@@ -223,4 +227,3 @@ if "best_schedule" in st.session_state:
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
     fig.colorbar(im, ax=ax, label="Number of Employees Assigned")
     st.pyplot(fig)
-
