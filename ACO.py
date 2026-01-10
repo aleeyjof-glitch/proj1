@@ -193,11 +193,29 @@ if "best_schedule" in st.session_state:
     # ================================
     # SHORTAGE & WORKLOAD TABLES
     # ================================
-    st.subheader("⚠️ Shortage Summary")
-    st.dataframe(pd.DataFrame(shortage_summary, columns=["Department","Day","Period","Shortage"]))
+    st.subheader("⚠️ Shortage Summary per Department per Day")
+        for dept in range(DEMAND.shape[0]):
+        st.markdown(f"## Department {dept+1}")
+        staff_matrix = best_schedule[dept, :, :, :]
+    
+        # Table untuk shortage setiap hari
+        daily_shortage_summary = []
 
-    st.subheader("📊 Workload Summary")
-    st.dataframe(pd.DataFrame(workload_summary, columns=["Department","Employee","Total Assigned Periods"]))
+        for d in range(DEMAND.shape[1]):
+           assigned_row = np.sum(staff_matrix[d, :, :], axis=1)  # sum per period
+           required_row = DEMAND[dept, d, :].astype(int)
+           shortage_row = np.maximum(0, required_row - assigned_row).astype(int)
+
+           total_shortage_day = np.sum(shortage_row)
+           daily_shortage_summary.append([d+1, *shortage_row, total_shortage_day])
+
+        # Buat dataframe
+        columns = [f"P{i+1}" for i in range(DEMAND.shape[2])] + ["Total"]
+        df_shortage_day = pd.DataFrame(daily_shortage_summary, columns=["Day"] + columns)
+        st.dataframe(df_shortage_day)
+
+        st.subheader("📊 Workload Summary")
+        st.dataframe(pd.DataFrame(workload_summary, columns=["Department","Employee","Total Assigned Periods"]))
 
     # ================================
     # HEATMAP PER DEPARTMENT
