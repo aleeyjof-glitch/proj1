@@ -13,15 +13,14 @@ import matplotlib.pyplot as plt
 # ================================
 # CONFIG
 # ================================
-DATA_FILE = "Store Size 6 - SS6-CV10-01.xlsx"  # Excel file
-sheet_name = "sheet1"
+DATA_FILE = "Store Size 6 - SS6-CV10-01.xlsx"
 st.title("🐜 ACO Employee Shift Scheduling")
 
 # ================================
-# LOAD DATASET (Safe for Streamlit)
+# LOAD DATASET
 # ================================
-xls = pd.ExcelFile(DATA_FILE)  # baca semua sheet
-sheet_choice = st.selectbox("Select sheet to load:", xls.sheet_names)  # dropdown untuk pilih sheet
+xls = pd.ExcelFile(DATA_FILE)
+sheet_choice = st.selectbox("Select sheet to load:", xls.sheet_names)
 df = pd.read_excel(DATA_FILE, sheet_name=sheet_choice)
 st.success(f"Dataset loaded from {DATA_FILE}, sheet: {sheet_choice}")
 
@@ -37,10 +36,8 @@ for dept in range(n_departments):
     dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].values
     st.write(f"Dept {dept+1} original shape:", dept_data.shape)
 
-    # Safe conversion
     dept_data_numeric = pd.DataFrame(dept_data).apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
     DEMAND[dept, :, :] = dept_data_numeric
-
     st.write(f"Dept {dept+1} preview:", DEMAND[dept, :, :])
 
 # ================================
@@ -50,7 +47,7 @@ def fitness(schedule, demand, max_hours):
     penalty = 0
     n_departments, days, periods, employees = schedule.shape
 
-    # Hard Constraint: meet demand
+    # Hard constraint: meet demand
     for dept in range(n_departments):
         for d in range(days):
             for t in range(periods):
@@ -59,14 +56,14 @@ def fitness(schedule, demand, max_hours):
                 if assigned < required:
                     penalty += (required - assigned) * 1000
 
-    # Hard Constraint: max hours per employee
+    # Hard constraint: max hours per employee
     for dept in range(n_departments):
         for e in range(employees):
             total_hours = np.sum(schedule[dept, :, :, e])
             if total_hours > max_hours:
                 penalty += (total_hours - max_hours) * 200
 
-    # Soft Constraint: fair workload
+    # Soft constraint: fair workload
     for dept in range(n_departments):
         workloads = [np.sum(schedule[dept, :, :, e]) for e in range(employees)]
         penalty += np.var(workloads) * 10
@@ -106,10 +103,7 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, beta, evaporation,
                 best_score = score
                 best_schedule = schedule.copy()
 
-        # Evaporation
         pheromone *= (1 - evaporation)
-
-        # Pheromone update
         for sol, score in zip(all_solutions, all_scores):
             pheromone += (Q / (1 + score)) * sol
 
@@ -131,110 +125,99 @@ max_hours = st.sidebar.slider("Max Working Hours / Week", 20, 60, 40)
 # ================================
 # RUN BUTTON & STORE BEST SCHEDULE
 # ================================
-if "best_schedule" not in st.session_state or st.sidebar.button("Run Scheduling ACO"):
-    st.session_state.best_schedule, st.session_state.best_score = ACO_scheduler(
-        DEMAND,
-        n_employees,
-        n_ants,
-        n_iter,
-        alpha,
-        beta,
-        evaporation,
-        Q,
-        max_hours
-    )
-    st.success(f"Best Fitness Score: {st.session_state.best_score:.2f}")
+if "best_schedule" not in st.session_state:
+    if st.sidebar.button("Run Scheduling ACO"):
+        st.session_state.best_schedule, st.session_state.best_score = ACO_scheduler(
+            DEMAND,
+            n_employees,
+            n_ants,
+            n_iter,
+            alpha,
+            beta,
+            evaporation,
+            Q,
+            max_hours
+        )
+        st.success(f"Best Fitness Score: {st.session_state.best_score:.2f}")
 
 # ================================
-# TABLE PER DEPARTMENT & DAY
+# TABLE, SHORTAGE & WORKLOAD SUMMARY
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
     employee_ids = [f"E{i+1}" for i in range(n_employees)]
-    shortage_summary = []
-    workload_summary = []
 
     st.subheader("📋 Staffing Tables per Department & Day")
     for dept in range(DEMAND.shape[0]):
         st.markdown(f"## Department {dept+1}")
         staff_matrix = best_schedule[dept, :, :, :]
-        total_shortage = 0
 
+        # Table per day
         for d in range(DEMAND.shape[1]):
             assigned_row = np.sum(staff_matrix[d, :, :], axis=1)
             required_row = DEMAND[dept, d, :].astype(int)
             shortage_row = np.maximum(0, required_row - assigned_row).astype(int)
-            total_shortage += np.sum(shortage_row)
 
-            # Employee assignment per period
             emp_rows = [
                 ", ".join([employee_ids[e] for e in range(n_employees) if staff_matrix[d, t, e]==1]) or "-"
-                for t in range(DEMAND.shape[2])
+                for t in range(n_periods)
             ]
 
             df_day = pd.DataFrame(
                 [emp_rows, assigned_row, required_row, shortage_row],
                 index=["Employees", "Assigned", "Required", "Shortage"],
-                columns=[f"P{i+1}" for i in range(DEMAND.shape[2])]
+                columns=[f"P{i+1}" for i in range(n_periods)]
             )
             st.markdown(f"### Day {d+1}")
             st.dataframe(df_day)
 
-            # Add to shortage summary
-            for t, s in enumerate(shortage_row):
-                if s > 0:
-                    shortage_summary.append([dept+1, d+1, t+1, s])
-
-        # Workload summary per employee
-        emp_workload = [np.sum(staff_matrix[:, :, e]) for e in range(n_employees)]
-        for e, w in enumerate(emp_workload):
-            workload_summary.append([dept+1, employee_ids[e], w])
-
-    # ================================
-    # SHORTAGE & WORKLOAD TABLES
-    # ================================
-    st.subheader("⚠️ Shortage Summary per Department per Day")
-        for dept in range(DEMAND.shape[0]):
-        st.markdown(f"## Department {dept+1}")
-        staff_matrix = best_schedule[dept, :, :, :]
-    
-        # Table untuk shortage setiap hari
+        # ================================
+        # SHORTAGE SUMMARY (reset per department)
+        # ================================
+        st.subheader("⚠️ Shortage Summary per Department per Day")
         daily_shortage_summary = []
+        for d in range(n_days):
+            assigned_row = np.sum(staff_matrix[d, :, :], axis=1)
+            required_row = DEMAND[dept, d, :].astype(int)
+            shortage_row = np.maximum(0, required_row - assigned_row).astype(int)
+            total_shortage_day = np.sum(shortage_row)
+            daily_shortage_summary.append([d+1, *shortage_row, total_shortage_day])
 
-        for d in range(DEMAND.shape[1]):
-           assigned_row = np.sum(staff_matrix[d, :, :], axis=1)  # sum per period
-           required_row = DEMAND[dept, d, :].astype(int)
-           shortage_row = np.maximum(0, required_row - assigned_row).astype(int)
-
-           total_shortage_day = np.sum(shortage_row)
-           daily_shortage_summary.append([d+1, *shortage_row, total_shortage_day])
-
-        # Buat dataframe
-        columns = [f"P{i+1}" for i in range(DEMAND.shape[2])] + ["Total"]
+        columns = [f"P{i+1}" for i in range(n_periods)] + ["Total"]
         df_shortage_day = pd.DataFrame(daily_shortage_summary, columns=["Day"] + columns)
         st.dataframe(df_shortage_day)
 
+        # ================================
+        # WORKLOAD SUMMARY
+        # ================================
         st.subheader("📊 Workload Summary")
-        st.dataframe(pd.DataFrame(workload_summary, columns=["Department","Employee","Total Assigned Periods"]))
+        emp_workload = [np.sum(staff_matrix[:, :, e]) for e in range(n_employees)]
+        df_workload = pd.DataFrame(
+            [[employee_ids[e], emp_workload[e]] for e in range(n_employees)],
+            columns=["Employee", "Total Assigned Periods"]
+        )
+        st.dataframe(df_workload)
 
-    # ================================
-    # HEATMAP PER DEPARTMENT
-    # ================================
+# ================================
+# HEATMAP PER DEPARTMENT
+# ================================
+if "best_schedule" in st.session_state:
     st.subheader("📈 Heatmap: Assigned Employees per Department")
     dept_choice = st.selectbox(
         "Select Department for Heatmap", 
-        [f"Dept {i+1}" for i in range(DEMAND.shape[0])]
+        [f"Dept {i+1}" for i in range(n_departments)]
     )
     dept_idx = int(dept_choice.split()[-1]) - 1
+    staff_matrix = st.session_state.best_schedule[dept_idx, :, :, :]
+    heatmap_data = np.sum(staff_matrix, axis=2)
 
-    heatmap_data = np.sum(best_schedule[dept_idx, :, :, :], axis=2)
     fig, ax = plt.subplots(figsize=(12,4))
     im = ax.imshow(heatmap_data, aspect='auto', cmap='viridis')
 
-    ax.set_xticks(range(DEMAND.shape[2]))
-    ax.set_xticklabels([f"P{i+1}" for i in range(DEMAND.shape[2])], rotation=45)
-    ax.set_yticks(range(DEMAND.shape[1]))
-    ax.set_yticklabels([f"Day {i+1}" for i in range(DEMAND.shape[1])])
+    ax.set_xticks(range(n_periods))
+    ax.set_xticklabels([f"P{i+1}" for i in range(n_periods)], rotation=45)
+    ax.set_yticks(range(n_days))
+    ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
     ax.set_xlabel("Time Periods")
     ax.set_ylabel("Days")
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
