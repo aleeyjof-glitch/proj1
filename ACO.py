@@ -31,29 +31,29 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
+
 for dept in range(n_departments):
     file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx") 
     if not os.path.exists(file_path):
         st.error(f"File {file_path} not found!")
-    else:
-        # Baca Excel tanpa header
-        df = pd.read_excel(file_path, header=None)
-        # Drop baris/column kosong
+        continue
+
+        # Baca Excel, abaikan header baris pertama (Day/Period)
+        df = pd.read_excel(file_path, header=0)  # gunakan baris pertama sebagai nama kolum
         df = df.dropna(how='all', axis=0)
         df = df.dropna(how='all', axis=1)
 
-        # Buang column pertama jika tu hanya index/label
-        df = df.iloc[:, 1:]  # ambil semua column kecuali yang pertama
+        # Ambil 7 baris pertama dan 28 kolum pertama
+        df_subset = df.iloc[:n_days, :n_periods]
+        df_subset = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
 
-        # Cari baris pertama yang penuh angka (demand sebenar)
-        valid_rows = df.applymap(np.isreal).all(axis=1)
-        df_clean = df[valid_rows]
+        # Simpan ke numpy DEMAND
+        DEMAND[dept, :, :] = df_subset.values
 
-        # Ambil n_days x n_periods pertama sahaja
-        df_subset = df_clean.iloc[:n_days, :n_periods]
-
-        # Convert ke int safely
-        DEMAND[dept, :, :] = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
+        # Buat table preview dengan Day/Period di sebelah kiri
+        df_display = df_subset.copy()
+        df_display.index = np.arange(1, n_days+1)      # Day 1–7
+        df_display.columns = np.arange(1, n_periods+1)  # Period 1–28
 
         st.write(f"Dept {dept+1} DEMAND preview:")
         st.dataframe(DEMAND[dept, :, :])
