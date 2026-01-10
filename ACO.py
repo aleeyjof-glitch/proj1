@@ -28,9 +28,6 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 # ================================
 # LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
 # ================================
-# ================================
-# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
-# ================================
 st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
@@ -60,8 +57,6 @@ for dept in range(n_departments):
     df_display.iloc[1:,1:] = df_subset.values            # demand values
     st.write(f"Dept {dept+1} DEMAND preview:")
     st.dataframe(df_display)
-)
-
 # ================================
 # FITNESS FUNCTION
 # ================================
