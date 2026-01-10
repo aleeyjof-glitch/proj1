@@ -34,8 +34,8 @@ n_periods = 28
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 for dept in range(n_departments):
-    dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].values
-    st.write(f"Dept {dept+1} data shape:", dept_data.shape)
+    dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].fillna(0).values
+    DEMAND[dept, :, :] = dept_data.astype(int)  # <-- assign ke DEMAND
 
 # ================================
 # FITNESS FUNCTION
