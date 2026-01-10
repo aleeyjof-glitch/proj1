@@ -28,9 +28,6 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 # ================================
 # LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
 # ================================
-# ================================
-# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
-# ================================
 st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
@@ -41,7 +38,7 @@ for dept in range(n_departments):
         st.error(f"File {file_path} not found!")
         continue
 
-    # Baca Excel, abaikan header Excel asal
+    # Baca Excel tanpa header
     df = pd.read_excel(file_path, header=None)
     df = df.dropna(how='all', axis=0)
     df = df.dropna(how='all', axis=1)
@@ -53,12 +50,10 @@ for dept in range(n_departments):
     # Simpan ke numpy DEMAND
     DEMAND[dept, :, :] = df_subset.values
 
-    # Buat DataFrame untuk preview Excel-style
+    # Buat DataFrame preview dengan Excel-style (kosong di (1,1))
     df_display = df_subset.copy()
-    df_display.insert(0, "Day/Period", np.arange(1, n_days+1))  # kolum pertama = Day 1–7
-
-    # Buat header: kosong di kiri atas, period 1–28
-    header = [""] + list(np.arange(1, n_periods+1))
+    df_display.insert(0, "Day/Period", np.arange(1, n_days+1))  # Kolum pertama = Day 1–7
+    header = [""] + list(np.arange(1, n_periods+1))  # Baris pertama = Period 1–28
     df_display.columns = header
 
     st.write(f"Dept {dept+1} DEMAND preview:")
@@ -177,11 +172,12 @@ if "best_schedule" in st.session_state:
                 for t in range(n_periods)
             ]
 
+            # DataFrame with Excel-style first column = Day
             df_day = pd.DataFrame(
                 [emp_rows, assigned_row, required_row, shortage_row],
-                index=["Employees", "Assigned", "Required", "Shortage"],
-                columns=[f"P{i+1}" for i in range(n_periods)]
+                index=["Employees", "Assigned", "Required", "Shortage"]
             )
+            df_day.insert(0, "Day", d+1)  # kolum pertama = Day number
             st.markdown(f"### Day {d+1}")
             st.dataframe(df_day)
 
@@ -195,8 +191,8 @@ if "best_schedule" in st.session_state:
             total_shortage_day = np.sum(shortage_row)
             daily_shortage_summary.append([d+1, *shortage_row, total_shortage_day])
 
-        columns = [f"P{i+1}" for i in range(n_periods)] + ["Total"]
-        df_shortage_day = pd.DataFrame(daily_shortage_summary, columns=["Day"] + columns)
+        columns = ["Day"] + [f"P{i+1}" for i in range(n_periods)] + ["Total"]
+        df_shortage_day = pd.DataFrame(daily_shortage_summary, columns=columns)
         st.dataframe(df_shortage_day)
 
         # Workload summary
