@@ -24,9 +24,6 @@ xls = pd.ExcelFile(DATA_FILE)  # baca semua sheet
 sheet_choice = st.selectbox("Select sheet to load:", xls.sheet_names)  # dropdown untuk pilih sheet
 df = pd.read_excel(DATA_FILE, sheet_name=sheet_choice)
 st.success(f"Dataset loaded from {DATA_FILE}, sheet: {sheet_choice}")
-for dept in range(n_departments):
-    dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].values
-    st.write(f"Dept {dept+1} data shape:", dept_data.shape)
 
 # ================================
 # CONVERT TO 3D NUMPY ARRAY: dept x day x period
@@ -38,7 +35,7 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 for dept in range(n_departments):
     dept_data = df.iloc[dept*n_days : (dept+1)*n_days, 0:n_periods].values
-    DEMAND[dept, :, :] = dept_data.astype(int)
+    st.write(f"Dept {dept+1} data shape:", dept_data.shape)
 
 # ================================
 # FITNESS FUNCTION
