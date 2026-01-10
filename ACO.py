@@ -129,10 +129,10 @@ Q = st.sidebar.slider("Q (deposit)", 1, 100, 50)
 max_hours = st.sidebar.slider("Max Working Hours / Week", 20, 60, 40)
 
 # ================================
-# RUN BUTTON
+# RUN BUTTON & STORE BEST SCHEDULE
 # ================================
-if st.button("Run Scheduling ACO"):
-    best_schedule, best_score = ACO_scheduler(
+if "best_schedule" not in st.session_state or st.sidebar.button("Run Scheduling ACO"):
+    st.session_state.best_schedule, st.session_state.best_score = ACO_scheduler(
         DEMAND,
         n_employees,
         n_ants,
@@ -143,33 +143,34 @@ if st.button("Run Scheduling ACO"):
         Q,
         max_hours
     )
-    st.success(f"Best Fitness Score: {best_score:.2f}")
+    st.success(f"Best Fitness Score: {st.session_state.best_score:.2f}")
 
-    # ================================
-    # TABLE PER DEPARTMENT & DAY WITH EMPLOYEE IDs
-    # ================================
-    st.subheader("📋 Staffing Tables per Department & Day")
+# ================================
+# TABLE PER DEPARTMENT & DAY
+# ================================
+if "best_schedule" in st.session_state:
+    best_schedule = st.session_state.best_schedule
     employee_ids = [f"E{i+1}" for i in range(n_employees)]
     shortage_summary = []
     workload_summary = []
 
+    st.subheader("📋 Staffing Tables per Department & Day")
     for dept in range(DEMAND.shape[0]):
         st.markdown(f"## Department {dept+1}")
-        staff_matrix = best_schedule[dept, :, :, :]  # dept x day x period x employee
+        staff_matrix = best_schedule[dept, :, :, :]
         total_shortage = 0
 
         for d in range(DEMAND.shape[1]):
-            rows = []
-            assigned_row = np.sum(staff_matrix[d, :, :], axis=1)  # sum employees per period
+            assigned_row = np.sum(staff_matrix[d, :, :], axis=1)
             required_row = DEMAND[dept, d, :].astype(int)
             shortage_row = np.maximum(0, required_row - assigned_row).astype(int)
             total_shortage += np.sum(shortage_row)
 
             # Employee assignment per period
-            emp_rows = []
-            for t in range(DEMAND.shape[2]):
-                emp_assigned = [employee_ids[e] for e in range(n_employees) if staff_matrix[d, t, e]==1]
-                emp_rows.append(", ".join(emp_assigned) if emp_assigned else "-")
+            emp_rows = [
+                ", ".join([employee_ids[e] for e in range(n_employees) if staff_matrix[d, t, e]==1]) or "-"
+                for t in range(DEMAND.shape[2])
+            ]
 
             df_day = pd.DataFrame(
                 [emp_rows, assigned_row, required_row, shortage_row],
@@ -190,29 +191,28 @@ if st.button("Run Scheduling ACO"):
             workload_summary.append([dept+1, employee_ids[e], w])
 
     # ================================
-    # SHORTAGE SUMMARY TABLE
+    # SHORTAGE & WORKLOAD TABLES
     # ================================
     st.subheader("⚠️ Shortage Summary")
-    df_shortage = pd.DataFrame(shortage_summary, columns=["Department","Day","Period","Shortage"])
-    st.dataframe(df_shortage)
+    st.dataframe(pd.DataFrame(shortage_summary, columns=["Department","Day","Period","Shortage"]))
 
-    # ================================
-    # WORKLOAD SUMMARY TABLE
-    # ================================
     st.subheader("📊 Workload Summary")
-    df_workload = pd.DataFrame(workload_summary, columns=["Department","Employee","Total Assigned Periods"])
-    st.dataframe(df_workload)
+    st.dataframe(pd.DataFrame(workload_summary, columns=["Department","Employee","Total Assigned Periods"]))
 
     # ================================
     # HEATMAP PER DEPARTMENT
     # ================================
     st.subheader("📈 Heatmap: Assigned Employees per Department")
-    dept_choice = st.selectbox("Select Department for Heatmap", [f"Dept {i+1}" for i in range(DEMAND.shape[0])])
+    dept_choice = st.selectbox(
+        "Select Department for Heatmap", 
+        [f"Dept {i+1}" for i in range(DEMAND.shape[0])]
+    )
     dept_idx = int(dept_choice.split()[-1]) - 1
+
     heatmap_data = np.sum(best_schedule[dept_idx, :, :, :], axis=2)
     fig, ax = plt.subplots(figsize=(12,4))
     im = ax.imshow(heatmap_data, aspect='auto', cmap='viridis')
-  
+
     ax.set_xticks(range(DEMAND.shape[2]))
     ax.set_xticklabels([f"P{i+1}" for i in range(DEMAND.shape[2])], rotation=45)
     ax.set_yticks(range(DEMAND.shape[1]))
