@@ -50,9 +50,6 @@ for dept in range(n_departments):
 
     # Simpan ke numpy DEMAND
     DEMAND[dept, :, :] = df_subset.values
-    
-    st.write(f"Dept {dept+1} DEMAND preview:")
-    st.dataframe(df_display)
 
 # ================================
 # FITNESS FUNCTION
