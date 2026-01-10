@@ -32,20 +32,29 @@ st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
 for dept in range(n_departments):
-    file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")  # D besar sesuai file
+    file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx") 
     if not os.path.exists(file_path):
         st.error(f"File {file_path} not found!")
     else:
+        # Baca Excel tanpa header
         df = pd.read_excel(file_path, header=None)
-        # Drop empty rows & columns
+        # Drop baris/column kosong
         df = df.dropna(how='all', axis=0)
         df = df.dropna(how='all', axis=1)
-        # Ambil n_days x n_periods sahaja
-        df_subset = df.iloc[:n_days, :n_periods]
-        # Convert to int safely
+
+        # Buang column pertama jika tu hanya index/label
+        df = df.iloc[:, 1:]  # ambil semua column kecuali yang pertama
+
+        # Cari baris pertama yang penuh angka (demand sebenar)
+        valid_rows = df.applymap(np.isreal).all(axis=1)
+        df_clean = df[valid_rows]
+
+        # Ambil n_days x n_periods pertama sahaja
+        df_subset = df_clean.iloc[:n_days, :n_periods]
+
+        # Convert ke int safely
         DEMAND[dept, :, :] = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
-        st.write(f"Dept {dept+1} DEMAND preview:")
-        st.dataframe(DEMAND[dept, :, :])
+
 
 # ================================
 # FITNESS FUNCTION
