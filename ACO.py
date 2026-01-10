@@ -203,12 +203,16 @@ if st.button("Run Scheduling ACO"):
     st.subheader("📈 Heatmap: Assigned Employees per Department")
     dept_choice = st.selectbox("Select Department for Heatmap", [f"Dept {i+1}" for i in range(DEMAND.shape[0])])
     dept_idx = int(dept_choice.split()[-1]) - 1
-    staff_matrix = np.sum(best_schedule[dept_idx, :, :, :], axis=2)
-
+    heatmap_data = np.sum(best_schedule[dept_idx, :, :, :], axis=2)
     fig, ax = plt.subplots(figsize=(12,4))
-    im = ax.imshow(staff_matrix, aspect='auto', cmap='viridis')
-    ax.set_xlabel("Time Period (1–28)")
-    ax.set_ylabel("Day (1–7)")
+    im = ax.imshow(heatmap_data, aspect='auto', cmap='viridis')
+  
+    ax.set_xticks(range(DEMAND.shape[2]))
+    ax.set_xticklabels([f"P{i+1}" for i in range(DEMAND.shape[2])], rotation=45)
+    ax.set_yticks(range(DEMAND.shape[1]))
+    ax.set_yticklabels([f"Day {i+1}" for i in range(DEMAND.shape[1])])
+    ax.set_xlabel("Time Periods")
+    ax.set_ylabel("Days")
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
-    plt.colorbar(im)
+    fig.colorbar(im, ax=ax, label="Number of Employees Assigned")
     st.pyplot(fig)
