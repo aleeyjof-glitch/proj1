@@ -21,7 +21,7 @@ st.title("🐜 ACO Employee Shift Scheduling")
 # ================================
 xls = pd.ExcelFile(DATA_FILE)
 sheet_choice = st.selectbox("Select sheet to load:", xls.sheet_names)
-df = pd.read_excel(DATA_FILE, sheet_name=sheet_choice)
+df = pd.read_excel(DATA_FILE, sheet_name=sheet_choice, header=None)
 st.success(f"Dataset loaded from {DATA_FILE}, sheet: {sheet_choice}")
 
 # ================================
