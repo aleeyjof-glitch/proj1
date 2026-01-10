@@ -32,7 +32,7 @@ st.sidebar.header("Department Demand (Auto Load from folder)")
 
 folder_path = "./Demand/"  # Folder demand file
 for dept in range(n_departments):
-    file_path = os.path.join(folder_path, f"dept{dept+1}.xlsx")
+    file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")  # D besar sesuai file
     if not os.path.exists(file_path):
         st.error(f"File {file_path} not found!")
     else:
@@ -54,7 +54,6 @@ def fitness(schedule, demand, max_hours):
     penalty = 0
     n_departments, days, periods, employees = schedule.shape
 
-    # Hard constraint: meet demand
     for dept in range(n_departments):
         for d in range(days):
             for t in range(periods):
@@ -63,15 +62,11 @@ def fitness(schedule, demand, max_hours):
                 if assigned < required:
                     penalty += (required - assigned) * 1000
 
-    # Hard constraint: max hours per employee
-    for dept in range(n_departments):
         for e in range(employees):
             total_hours = np.sum(schedule[dept, :, :, e])
             if total_hours > max_hours:
                 penalty += (total_hours - max_hours) * 200
 
-    # Soft constraint: fair workload
-    for dept in range(n_departments):
         workloads = [np.sum(schedule[dept, :, :, e]) for e in range(employees)]
         penalty += np.var(workloads) * 10
 
@@ -152,7 +147,6 @@ if "best_schedule" in st.session_state:
         st.markdown(f"## Department {dept+1}")
         staff_matrix = best_schedule[dept, :, :, :]
 
-        # Table per day
         for d in range(n_days):
             assigned_row = np.sum(staff_matrix[d, :, :], axis=1)
             required_row = DEMAND[dept, d, :].astype(int)
@@ -171,7 +165,7 @@ if "best_schedule" in st.session_state:
             st.markdown(f"### Day {d+1}")
             st.dataframe(df_day)
 
-        # Shortage summary per department
+        # Shortage summary
         st.subheader("⚠️ Shortage Summary per Department per Day")
         daily_shortage_summary = []
         for d in range(n_days):
@@ -185,7 +179,7 @@ if "best_schedule" in st.session_state:
         df_shortage_day = pd.DataFrame(daily_shortage_summary, columns=["Day"] + columns)
         st.dataframe(df_shortage_day)
 
-        # Workload summary per department
+        # Workload summary
         st.subheader("📊 Workload Summary")
         emp_workload = [np.sum(staff_matrix[:, :, e]) for e in range(n_employees)]
         df_workload = pd.DataFrame(
@@ -219,3 +213,4 @@ if "best_schedule" in st.session_state:
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
     fig.colorbar(im, ax=ax, label="Number of Employees Assigned")
     st.pyplot(fig)
+)
