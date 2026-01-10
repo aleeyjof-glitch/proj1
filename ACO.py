@@ -213,4 +213,4 @@ if "best_schedule" in st.session_state:
     ax.set_title(f"Department {dept_idx+1} Assigned Employees Heatmap")
     fig.colorbar(im, ax=ax, label="Number of Employees Assigned")
     st.pyplot(fig)
-)
+
