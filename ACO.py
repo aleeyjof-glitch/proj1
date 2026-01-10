@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import os
 
 # ================================
 # CONFIG
@@ -25,42 +26,26 @@ n_periods = 28
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 # ================================
-# LOAD DEPARTMENT EXCEL FILES (from GitHub / pre-uploaded)
+# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
 # ================================
-st.sidebar.header("Upload Department Demand Excel Files")
-uploaded_files = []
+st.sidebar.header("Department Demand (Auto Load from folder)")
 
+folder_path = "./Demand/"  # Folder demand file
 for dept in range(n_departments):
-    uploaded_file = st.sidebar.file_uploader(
-        label=f"Upload Excel for Department {dept+1}",
-        type=["xlsx", "xls"],
-        key=f"dept_{dept+1}"
-    )
-    uploaded_files.append(uploaded_file)
-
-# ================================
-# LOAD DEMAND
-# ================================
-all_files_uploaded = all(f is not None for f in uploaded_files)
-
-if all_files_uploaded:
-    for dept, file in enumerate(uploaded_files):
-        df = pd.read_excel(file, header=None)
-
-        # drop completely empty rows/columns
+    file_path = os.path.join(folder_path, f"dept{dept+1}.xlsx")
+    if not os.path.exists(file_path):
+        st.error(f"File {file_path} not found!")
+    else:
+        df = pd.read_excel(file_path, header=None)
+        # Drop empty rows & columns
         df = df.dropna(how='all', axis=0)
         df = df.dropna(how='all', axis=1)
-
-        # ambil 7 baris x 28 column pertama sahaja
+        # Ambil n_days x n_periods sahaja
         df_subset = df.iloc[:n_days, :n_periods]
-
-        # convert to int safely
+        # Convert to int safely
         DEMAND[dept, :, :] = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int).values
-
         st.write(f"Dept {dept+1} DEMAND preview:")
         st.dataframe(DEMAND[dept, :, :])
-else:
-    st.warning("Please upload all 6 department Excel files to proceed.")
 
 # ================================
 # FITNESS FUNCTION
