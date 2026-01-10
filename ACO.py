@@ -28,8 +28,9 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 # ================================
 # LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
 # ================================
-st.sidebar.header("Department Demand (Auto Load from folder)")
-
+# ================================
+# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
+# ================================
 folder_path = "./Demand/"  # Folder demand file
 
 for dept in range(n_departments):
@@ -49,20 +50,7 @@ for dept in range(n_departments):
 
     # Simpan ke numpy DEMAND
     DEMAND[dept, :, :] = df_subset.values
-
-    # Buat Excel-style DataFrame preview
-    df_display = pd.DataFrame(index=range(n_days+1), columns=range(n_periods+1), dtype=object)
-
-    # Baris pertama: kosong di kiri atas, Period 1..28
-    df_display.iloc[0,0] = ""
-    df_display.iloc[0,1:] = np.arange(1, n_periods+1)
-
-    # Kolum pertama: Day 1..7
-    df_display.iloc[1:,0] = np.arange(1, n_days+1)
-
-    # Demand values
-    df_display.iloc[1:,1:] = df_subset.values
-
+    
     st.write(f"Dept {dept+1} DEMAND preview:")
     st.dataframe(df_display)
 
