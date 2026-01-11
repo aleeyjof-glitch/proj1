@@ -6,6 +6,7 @@
 # - Heatmap
 # - Pareto front
 # - Minimum 1 off-day per employee per week (max 1)
+# - Shift assignment consistent with off-day
 # ================================
 
 import streamlit as st
@@ -155,6 +156,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     no_improve_count = 0
     fitness_history = []
     pareto_data = []
+    off_schedules_all = []
 
     start_time = time.time()
 
@@ -164,14 +166,16 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
 
         for _ in range(n_ants):
             schedule = np.zeros((n_departments, days, periods, max_employees))
+            off_schedules = []
 
             for dept in range(n_departments):
                 n_employees = n_employees_per_dept[dept]
 
                 # Generate min 1 off-day per employee
                 employee_off_schedule = generate_min_one_off_schedule(n_employees, n_days)
+                off_schedules.append(employee_off_schedule)
 
-                # Assign shifts
+                # Assign shifts only if employee is not off
                 for d in range(n_days):
                     available_emps = [e for e in range(n_employees) if employee_off_schedule[e, d] == 0]
                     random.shuffle(available_emps)
@@ -184,6 +188,9 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
                     for e in shift2_emps:
                         schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
 
+            # Store off-day schedules for later display
+            off_schedules_all.append(off_schedules)
+
             score = fitness(schedule, demand, max_hours)
             solutions.append(schedule)
             scores.append(score)
@@ -195,6 +202,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             if score < best_score:
                 best_score = score
                 best_schedule = schedule.copy()
+                best_off_schedules = off_schedules.copy()
                 no_improve_count = 0
             else:
                 no_improve_count += 1
@@ -212,7 +220,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             break
 
     run_time = time.time() - start_time
-    return best_schedule, best_score, fitness_history, pareto_data, run_time
+    return best_schedule, best_score, fitness_history, pareto_data, run_time, best_off_schedules
 
 # ================================
 # STREAMLIT CONTROLS
@@ -239,7 +247,7 @@ for dept in range(n_departments):
 # ================================
 if st.sidebar.button("🚀 Run ACO"):
     with st.spinner("Optimizing schedule..."):
-        best_schedule, best_score, fitness_history, pareto_data, run_time = ACO_scheduler(
+        best_schedule, best_score, fitness_history, pareto_data, run_time, best_off_schedules = ACO_scheduler(
             DEMAND,
             n_employees_per_dept,
             n_ants,
@@ -255,6 +263,7 @@ if st.sidebar.button("🚀 Run ACO"):
         st.session_state.fitness_history = fitness_history
         st.session_state.pareto_data = pareto_data
         st.session_state.run_time = run_time
+        st.session_state.best_off_schedules = best_off_schedules
 
         st.success(f"Best Fitness Score: {best_score:.2f}")
         st.info(f"Computation Time: {run_time:.2f} seconds")
@@ -283,6 +292,7 @@ if st.sidebar.button("🚀 Run ACO"):
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
+    best_off_schedules = st.session_state.best_off_schedules[0]  # Use first ant's off-schedule
     st.header("📋 Consolidated Staff Schedule per Department")
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
@@ -297,8 +307,8 @@ if "best_schedule" in st.session_state:
         n_employees = n_employees_per_dept[dept]
         employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
-        # Min 1 off-day per employee
-        employee_off_schedule = generate_min_one_off_schedule(n_employees, n_days)
+        # Use off-schedule from ACO
+        employee_off_schedule = best_off_schedules[dept]
 
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
@@ -370,3 +380,4 @@ if "best_schedule" in st.session_state:
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
+
