@@ -1,12 +1,7 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (09-17 & 14-22) with:
-# - Multi-objective (shortage & workload)
-# - Fitness convergence
-# - Heatmap
-# - Pareto front
-# - Minimum 1 off-day per employee per week (max 1)
-# - Shift assignment consistent with off-day
+# Employee Shift Scheduling (09-17 & 14-22)
+# Fully consistent off-day & shift assignment
 # ================================
 
 import streamlit as st
@@ -132,15 +127,11 @@ def compute_objectives(schedule, demand, max_hours):
 def generate_min_one_off_schedule(n_employees, n_days):
     """
     Setiap pekerja cuti **sekali sahaja** per minggu.
-    Tidak boleh cuti lebih dari 1 kali.
-    Beberapa pekerja boleh cuti pada hari sama.
     """
     employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
-
     for e in range(n_employees):
         off_day = random.randint(0, n_days - 1)
         employee_off_schedule[e, off_day] = 1
-
     return employee_off_schedule
 
 # ================================
@@ -156,7 +147,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     no_improve_count = 0
     fitness_history = []
     pareto_data = []
-    off_schedules_all = []
+    best_off_schedules = []
 
     start_time = time.time()
 
@@ -187,9 +178,6 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
                         schedule[dept, d, 0:SHIFT_LENGTH, e] = 1
                     for e in shift2_emps:
                         schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
-
-            # Store off-day schedules for later display
-            off_schedules_all.append(off_schedules)
 
             score = fitness(schedule, demand, max_hours)
             solutions.append(schedule)
@@ -292,7 +280,7 @@ if st.sidebar.button("🚀 Run ACO"):
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
-    best_off_schedules = st.session_state.best_off_schedules[0]  # Use first ant's off-schedule
+    best_off_schedules = st.session_state.best_off_schedules
     st.header("📋 Consolidated Staff Schedule per Department")
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
