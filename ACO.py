@@ -341,11 +341,11 @@ if "best_schedule" in st.session_state:
         # Display schedule table
         df_dept = pd.DataFrame(
             rows,
-            columns=["Day", "Shift", "Employees Assigned", "Shortage (People per Period)", "Employee Off"]
+            columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage"]
         )
         def highlight_shortage(val):
             return "background-color: red; color: white" if val != "-" else ""
-        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage (People per Period)"]), use_container_width=True)
+        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage"]), use_container_width=True)
         st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
         summary_rows.append([f"Department {dept+1}", total_shortage])
 
