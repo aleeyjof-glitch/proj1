@@ -1,7 +1,11 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (09-17 & 14-22, per department employees, balanced employee off)
-# Extended with Multi-objective, Heatmap, Convergence, Pareto Front
+# Employee Shift Scheduling (09-17 & 14-22) with:
+# - Multi-objective (shortage & workload)
+# - Fitness convergence
+# - Heatmap
+# - Pareto front
+# - Rotating off-day schedule (fair)
 # ================================
 
 import streamlit as st
@@ -11,7 +15,6 @@ import random
 import os
 import time
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 # ================================
 # CONFIG
@@ -123,6 +126,26 @@ def compute_objectives(schedule, demand, max_hours):
     return total_shortage, workload_penalty
 
 # ================================
+# ROTATING OFF-DAY SCHEDULE (FAIR)
+# ================================
+def generate_fair_off_schedule(n_employees, n_days):
+    employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
+    off_per_employee = n_days // n_employees
+    extra_off = n_days % n_employees
+
+    for e in range(n_employees):
+        off_days = [(e + k) % n_days for k in range(off_per_employee)]
+        if e < extra_off:
+            off_days.append((e + off_per_employee) % n_days)
+        for d in off_days:
+            employee_off_schedule[e, d] = 1
+
+    # Shuffle per day supaya tidak kaku
+    for d in range(n_days):
+        np.random.shuffle(employee_off_schedule[:, d])
+    return employee_off_schedule
+
+# ================================
 # ACO ALGORITHM
 # ================================
 def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporation, Q, max_hours, early_stop=10):
@@ -134,7 +157,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     best_score = float("inf")
     no_improve_count = 0
     fitness_history = []
-    pareto_data = []  # track objectives per iteration for Pareto
+    pareto_data = []
 
     start_time = time.time()
 
@@ -147,13 +170,9 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
 
             for dept in range(n_departments):
                 n_employees = n_employees_per_dept[dept]
-                # Balanced off schedule
-                employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
-                for e in range(n_employees):
-                    off_day = e % n_days
-                    employee_off_schedule[e, off_day] = 1
-                for d in range(n_days):
-                    np.random.shuffle(employee_off_schedule[:, d])
+
+                # Generate fair off schedule
+                employee_off_schedule = generate_fair_off_schedule(n_employees, n_days)
 
                 # Assign shifts
                 for d in range(n_days):
@@ -172,7 +191,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             solutions.append(schedule)
             scores.append(score)
 
-            # Compute objectives
+            # Multi-objective
             total_shortage, workload_penalty = compute_objectives(schedule, demand, max_hours)
             pareto_data.append((total_shortage, workload_penalty))
 
@@ -281,26 +300,8 @@ if "best_schedule" in st.session_state:
         n_employees = n_employees_per_dept[dept]
         employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
-        # Generate employee off schedule
-        employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
-
-        # Tentukan jumlah cuti per pekerja
-        off_per_employee = n_days // n_employees  # minimum 1
-        extra_off = n_days % n_employees          # ada pekerja dapat 1 extra cuti jika n_days bukan kelipatan n_employees
-
-        for e in range(n_employees):
-           # Hari cuti untuk pekerja e
-           off_days = [(e + k) % n_days for k in range(off_per_employee)]
-           # Tambah extra cuti jika perlu
-           if e < extra_off:
-                 off_days.append((e + off_per_employee) % n_days)
-           for d in off_days:
-                 employee_off_schedule[e, d] = 1
-
-# Shuffle supaya cuti lebih natural
-for d in range(n_days):
-    np.random.shuffle(employee_off_schedule[:, d])
-
+        # Fair off schedule
+        employee_off_schedule = generate_fair_off_schedule(n_employees, n_days)
 
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
@@ -356,12 +357,16 @@ for d in range(n_days):
         # Heatmap
         st.subheader(f"🌡️ Shortage Heatmap - Department {dept+1}")
         fig, ax = plt.subplots(figsize=(6, 3))
-        sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="Reds",
-                    xticklabels=list(shift_mapping.keys()),
-                    yticklabels=[f"Day {i+1}" for i in range(n_days)],
-                    cbar_kws={'label': 'Shortage'})
-        ax.set_ylabel("Day")
+        ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
+        ax.set_xticks(range(len(shift_mapping)))
+        ax.set_xticklabels(list(shift_mapping.keys()))
+        ax.set_yticks(range(n_days))
+        ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
+        for i in range(n_days):
+            for j in range(len(shift_mapping)):
+                ax.text(j, i, int(heatmap_data[i, j]), ha="center", va="center", color="black")
         ax.set_xlabel("Shift")
+        ax.set_ylabel("Day")
         st.pyplot(fig)
 
     # Summary table
