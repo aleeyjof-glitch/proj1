@@ -1,7 +1,7 @@
 # ================================
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22, per department employees, balanced employee off)
-# Extended with Performance Analysis & Streamlit Dashboard
+# Extended with Performance Analysis, Multi-objective & Heatmap
 # ================================
 
 import streamlit as st
@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 import random
 import os
-import time  # NEW: track computation time
-import matplotlib.pyplot as plt  # NEW: for convergence plot
-import seaborn as sns  # NEW: for heatmap
+import time  # track computation time
+import matplotlib.pyplot as plt  # for convergence plot
+import seaborn as sns  # for heatmap
 
 # ================================
 # CONFIG
@@ -134,9 +134,9 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     best_schedule = None
     best_score = float("inf")
     no_improve_count = 0
-    fitness_history = []  # NEW: track best fitness per iteration
+    fitness_history = []  # track best fitness per iteration
 
-    start_time = time.time()  # NEW: start timer
+    start_time = time.time()  # start timer
 
     for iter_num in range(n_iter):
         solutions = []
@@ -147,14 +147,11 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
 
             for dept in range(n_departments):
                 n_employees = n_employees_per_dept[dept]
-                # ----------------------------
                 # Generate balanced employee off schedule
-                # ----------------------------
                 employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
                 for e in range(n_employees):
                     off_day = e % n_days
                     employee_off_schedule[e, off_day] = 1
-                # Shuffle to randomize distribution
                 for d in range(n_days):
                     np.random.shuffle(employee_off_schedule[:, d])
 
@@ -182,7 +179,9 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             else:
                 no_improve_count += 1
 
-        fitness_history.append(best_score)  # NEW: store best fitness per iteration
+        # NEW: track iteration best (even if global best not improved)
+        iteration_best = min(scores)
+        fitness_history.append(iteration_best)
 
         # Update pheromone
         pheromone *= (1 - evaporation)
@@ -194,7 +193,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             break
 
     end_time = time.time()
-    run_time = end_time - start_time  # NEW: total computation time
+    run_time = end_time - start_time  # total computation time
 
     return best_schedule, best_score, fitness_history, run_time
 
@@ -236,13 +235,13 @@ if st.sidebar.button("🚀 Run ACO"):
         )
         st.session_state.best_schedule = best_schedule
         st.session_state.best_score = best_score
-        st.session_state.fitness_history = fitness_history  # NEW
-        st.session_state.run_time = run_time  # NEW
+        st.session_state.fitness_history = fitness_history
+        st.session_state.run_time = run_time
 
         st.success(f"Best Fitness Score: {best_score:.2f}")
         st.info(f"Computation Time: {run_time:.2f} seconds")
 
-        # NEW: Convergence Curve
+        # Convergence Curve
         st.subheader("📈 Fitness Convergence")
         fig, ax = plt.subplots()
         ax.plot(fitness_history, marker='o')
@@ -251,7 +250,7 @@ if st.sidebar.button("🚀 Run ACO"):
         ax.set_title("ACO Convergence Curve")
         st.pyplot(fig)
 
-        # NEW: Multi-objective Summary
+        # Multi-objective summary
         total_shortage, workload_penalty = compute_objectives(best_schedule, DEMAND, max_hours)
         st.subheader("🎯 Multi-Objective Summary")
         st.write(f"Total Shortage: {total_shortage}")
@@ -288,10 +287,14 @@ if "best_schedule" in st.session_state:
         rows = []
         total_shortage = 0
 
+        # For heatmap data
+        heatmap_data = np.zeros((n_days, len(shift_mapping)))
+
         for d in range(n_days):
-            for shift_label, period_range in shift_mapping.items():
+            for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
                 assigned_emps = set()
                 shortage_periods = {}
+                shortage_total_shift = 0
 
                 for t in period_range:
                     if t >= n_periods:
@@ -305,12 +308,13 @@ if "best_schedule" in st.session_state:
                     shortage = DEMAND[dept, d, t] - len(assigned)
                     if shortage > 0:
                         shortage_periods[f"P{t+1}"] = shortage
+                        shortage_total_shift += shortage
 
                 # Employee off today
                 off_today = [employee_ids[e] for e in range(n_employees) if employee_off_schedule[e, d] == 1]
 
-                shift_shortage_total = sum(shortage_periods.values())
-                total_shortage += shift_shortage_total
+                total_shortage += shortage_total_shift
+                heatmap_data[d, idx] = shortage_total_shift  # record for heatmap
 
                 rows.append([
                     f"Day {d+1}",
@@ -320,6 +324,7 @@ if "best_schedule" in st.session_state:
                     ", ".join(off_today) if off_today else "-"
                 ])
 
+        # Display schedule table
         df_dept = pd.DataFrame(
             rows,
             columns=["Day", "Shift", "Employees Assigned", "Shortage (People per Period)", "Employee Off"]
@@ -332,30 +337,18 @@ if "best_schedule" in st.session_state:
         st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
         summary_rows.append([f"Department {dept+1}", total_shortage])
 
+        # Heatmap
+        st.subheader(f"🌡️ Shortage Heatmap - Department {dept+1}")
+        fig, ax = plt.subplots(figsize=(6, 3))
+        sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="Reds",
+                    xticklabels=list(shift_mapping.keys()),
+                    yticklabels=[f"Day {i+1}" for i in range(n_days)],
+                    cbar_kws={'label': 'Shortage'})
+        ax.set_ylabel("Day")
+        ax.set_xlabel("Shift")
+        st.pyplot(fig)
+
     # Summary table
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
-import seaborn as sns  # NEW: for heatmap
-
-# ================================
-# NEW: Heatmap of Shortage per Department
-# ================================
-heatmap_data = np.zeros((n_days, len(shift_mapping)))
-
-for d in range(n_days):
-    for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
-        shortage_total = 0
-        for t in period_range:
-            if t >= n_periods:
-                continue
-            assigned_count = np.sum(best_schedule[dept, d, t, :])
-            shortage_total += max(DEMAND[dept, d, t] - assigned_count, 0)
-        heatmap_data[d, idx] = shortage_total
-
-st.subheader(f"🌡️ Shortage Heatmap - Department {dept+1}")
-fig, ax = plt.subplots(figsize=(6, 3))
-sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="Reds", xticklabels=list(shift_mapping.keys()), yticklabels=[f"Day {i+1}" for i in range(n_days)], cbar_kws={'label': 'Shortage'})
-ax.set_ylabel("Day")
-ax.set_xlabel("Shift")
-st.pyplot(fig)
