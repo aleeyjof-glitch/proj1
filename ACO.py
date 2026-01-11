@@ -170,17 +170,66 @@ if st.sidebar.button("🚀 Run ACO"):
         st.success(f"Best Fitness Score: {best_score:.2f}")
 
 # ================================
-# DISPLAY RESULT
+# DISPLAY FULL STAFFING TABLE
 # ================================
 if "best_schedule" in st.session_state:
-    st.subheader("📊 Workload Summary")
-    sched = st.session_state.best_schedule
+    best_schedule = st.session_state.best_schedule
+    employee_ids = [f"E{i+1}" for i in range(n_employees)]
+
+    # Generate time labels
+    time_labels = []
+    hour = 8
+    minute = 0
+    for _ in range(n_periods):
+        start = f"{hour:02d}:{minute:02d}"
+        minute += 30
+        if minute == 60:
+            hour += 1
+            minute = 0
+        end = f"{hour:02d}:{minute:02d}"
+        time_labels.append(f"{start}-{end}")
+
+    st.header("📋 Staff Schedule per Department")
 
     for dept in range(n_departments):
-        workloads = [np.sum(sched[dept, :, :, e]) for e in range(n_employees)]
-        df = pd.DataFrame({
-            "Employee": [f"E{i+1}" for i in range(n_employees)],
-            "Total Periods": workloads
-        })
-        st.markdown(f"### Department {dept+1}")
-        st.dataframe(df)
+        st.subheader(f"🏢 Department {dept+1}")
+        staff_matrix = best_schedule[dept]
+
+        for d in range(n_days):
+            st.markdown(f"### 📅 Day {d+1}")
+
+            rows = []
+            for t in range(n_periods):
+                assigned_emps = [
+                    employee_ids[e]
+                    for e in range(n_employees)
+                    if staff_matrix[d, t, e] == 1
+                ]
+
+                assigned_count = len(assigned_emps)
+                required = DEMAND[dept, d, t]
+                shortage = max(0, required - assigned_count)
+
+                rows.append([
+                    f"P{t+1}",
+                    time_labels[t],
+                    ", ".join(assigned_emps) if assigned_emps else "-",
+                    assigned_count,
+                    required,
+                    shortage
+                ])
+
+            df_day = pd.DataFrame(
+                rows,
+                columns=[
+                    "Period",
+                    "Time",
+                    "Employees",
+                    "Assigned",
+                    "Required",
+                    "Shortage"
+                ]
+            )
+
+            st.dataframe(df_day, use_container_width=True)
+
