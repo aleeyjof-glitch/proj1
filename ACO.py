@@ -1,5 +1,5 @@
 # ================================
-# ACO Streamlit Dashboard (Performance + Multi-objective)
+# ACO Streamlit Dashboard (Per-Department Employees)
 # ================================
 
 import streamlit as st
@@ -12,7 +12,7 @@ import time
 # ================================
 # CONFIG
 # ================================
-st.title("🐜 ACO Employee Shift Scheduling Dashboard")
+st.title("🐜 ACO Employee Shift Scheduling (Per-Dept Employees)")
 
 n_departments = 6
 n_days = 7
@@ -23,6 +23,26 @@ SHIFT_LENGTH = 14  # 09-17 = 0-13, 14-22 = 14-27
 # DEMAND (Simulated Example)
 # ================================
 DEMAND = np.random.randint(1, 4, size=(n_departments, n_days, n_periods))
+
+# ================================
+# SIDEBAR: Per-Department Employees
+# ================================
+st.sidebar.header("👥 Employees per Department")
+n_employees_per_dept = []
+for dept in range(n_departments):
+    n_emp = st.sidebar.number_input(f"Dept {dept+1} Employees", min_value=1, max_value=50, value=10, step=1)
+    n_employees_per_dept.append(n_emp)
+
+st.sidebar.header("ACO Parameters")
+n_ants = st.sidebar.slider("Number of Ants",5,50,10)
+n_iter = st.sidebar.slider("Iterations",10,200,50)
+max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
+early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
+
+st.sidebar.header("Multi-objective Weights")
+w_shortage = st.sidebar.slider("Weight Shortage",0.0,5.0,1.0)
+w_workload = st.sidebar.slider("Weight Workload Balance",0.0,5.0,1.0)
+w_off = st.sidebar.slider("Weight 1 Day Off",0.0,5.0,1.0)
 
 # ================================
 # HELPER FUNCTIONS
@@ -38,56 +58,49 @@ def longest_consecutive_ones(arr):
             curr = 0
     return max_len
 
-# Multi-objective fitness
-def fitness(schedule, demand, max_hours, w_shortage=1.0, w_workload=1.0, w_off=1.0):
-    n_departments, days, periods, employees = schedule.shape
-    penalty_shortage = 0
-    penalty_workload = 0
-    penalty_off = 0
-
+def fitness(schedule, demand, max_hours, n_employees_per_dept, w_shortage=1.0, w_workload=1.0, w_off=1.0):
+    n_departments, days, periods, _ = schedule.shape
+    penalty_shortage=0
+    penalty_workload=0
+    penalty_off=0
     for dept in range(n_departments):
+        n_employees = n_employees_per_dept[dept]
         for d in range(days):
             for t in range(periods):
-                assigned = np.sum(schedule[dept, d, t, :])
-                required = demand[dept, d, t]
-                if assigned < required:
+                assigned = np.sum(schedule[dept,d,t,:n_employees])
+                required = demand[dept,d,t]
+                if assigned<required:
                     penalty_shortage += (required - assigned)
-
-        # Workload per employee
         total_hours_per_employee = np.sum(schedule[dept], axis=(0,1))
-        penalty_workload += np.var(total_hours_per_employee)
-
-        # 1 day off per employee
-        days_worked = np.sum(np.sum(schedule[dept], axis=1) > 0, axis=1)
-        penalty_off += np.sum(np.abs(days_worked - (n_days-1)))
-
+        penalty_workload += np.var(total_hours_per_employee[:n_employees])
+        days_worked = np.sum(np.sum(schedule[dept], axis=1)>0, axis=1)
+        penalty_off += np.sum(np.abs(days_worked[:n_employees] - (n_days-1)))
     total_penalty = w_shortage*penalty_shortage + w_workload*penalty_workload + w_off*penalty_off
     return total_penalty, penalty_shortage, penalty_workload, penalty_off
 
-# ACO Scheduler
-def ACO_scheduler(demand, n_employees, n_ants, n_iter, max_hours,
-                  w_shortage=1.0, w_workload=1.0, w_off=1.0, early_stop=10):
-
+def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, max_hours, w_shortage, w_workload, w_off, early_stop=10):
     n_departments, days, periods = demand.shape
     best_schedule = None
     best_score = float("inf")
-    no_improve_count = 0
-    fitness_history = []
+    no_improve_count=0
+    fitness_history=[]
+
+    # Max employees across departments for schedule array
+    max_employees = max(n_employees_per_dept)
+    schedule_shape = (n_departments, n_days, n_periods, max_employees)
 
     for iter_num in range(n_iter):
         for ant in range(n_ants):
-            schedule = np.zeros((n_departments, days, periods, n_employees))
-
+            schedule = np.zeros(schedule_shape)
             for dept in range(n_departments):
-                # Generate 1 day off per employee balanced
-                employee_off = np.zeros((n_employees, n_days), dtype=int)
+                n_employees = n_employees_per_dept[dept]
+                # Employee off: 1 day/week
+                employee_off = np.zeros((n_employees,n_days),dtype=int)
                 for e in range(n_employees):
                     off_day = e % n_days
-                    employee_off[e, off_day] = 1
+                    employee_off[e,off_day]=1
                 for d in range(n_days):
-                    np.random.shuffle(employee_off[:, d])
-
-                # Assign shift 09-17 / 14-22
+                    np.random.shuffle(employee_off[:,d])
                 for d in range(n_days):
                     available = [e for e in range(n_employees) if employee_off[e,d]==0]
                     random.shuffle(available)
@@ -98,36 +111,17 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, max_hours,
                         schedule[dept,d,0:SHIFT_LENGTH,e]=1
                     for e in shift2:
                         schedule[dept,d,14:14+SHIFT_LENGTH,e]=1
-
-            score, _, _, _ = fitness(schedule, demand, max_hours, w_shortage, w_workload, w_off)
+            score, _, _, _ = fitness(schedule, demand, max_hours, n_employees_per_dept, w_shortage, w_workload, w_off)
             fitness_history.append(score)
-
-            if score < best_score:
-                best_score = score
-                best_schedule = schedule.copy()
+            if score<best_score:
+                best_score=score
+                best_schedule=schedule.copy()
                 no_improve_count=0
             else:
-                no_improve_count +=1
-
+                no_improve_count+=1
         if no_improve_count>=early_stop:
             break
-
     return best_schedule, best_score, fitness_history
-
-# ================================
-# STREAMLIT SIDEBAR
-# ================================
-st.sidebar.header("ACO Parameters")
-n_employees = st.sidebar.slider("Employees per Department",5,50,20)
-n_ants = st.sidebar.slider("Number of Ants",5,50,10)
-n_iter = st.sidebar.slider("Iterations",10,200,50)
-max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
-early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
-
-st.sidebar.header("Multi-objective Weights")
-w_shortage = st.sidebar.slider("Weight Shortage",0.0,5.0,1.0)
-w_workload = st.sidebar.slider("Weight Workload Balance",0.0,5.0,1.0)
-w_off = st.sidebar.slider("Weight 1 Day Off",0.0,5.0,1.0)
 
 # ================================
 # RUN BUTTON
@@ -136,7 +130,7 @@ if st.sidebar.button("🚀 Run ACO"):
     with st.spinner("Optimizing schedule..."):
         start_time = time.time()
         best_schedule, best_score, fitness_history = ACO_scheduler(
-            DEMAND, n_employees, n_ants, n_iter, max_hours,
+            DEMAND, n_employees_per_dept, n_ants, n_iter, max_hours,
             w_shortage, w_workload, w_off, early_stop
         )
         end_time = time.time()
@@ -145,7 +139,7 @@ if st.sidebar.button("🚀 Run ACO"):
         st.session_state.fitness_history = fitness_history
 
 # ================================
-# PERFORMANCE ANALYSIS: Convergence
+# PERFORMANCE: Convergence
 # ================================
 if "fitness_history" in st.session_state:
     st.subheader("📈 Convergence Curve")
@@ -163,39 +157,37 @@ if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
     st.subheader("📋 Department Schedules & Shortage")
     shift_mapping = {"09:00-17:00": range(0,SHIFT_LENGTH),"14:00-22:00":range(14,14+SHIFT_LENGTH)}
+    n_employees_max = max(n_employees_per_dept)
 
     for dept in range(n_departments):
         st.markdown(f"### 🏢 Department {dept+1}")
-        n_employees_curr = n_employees
-        employee_ids = [f"E{i+1}" for i in range(n_employees_curr)]
+        n_employees = n_employees_per_dept[dept]
+        employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
-        # Employee off schedule
-        employee_off = np.zeros((n_employees_curr,n_days),dtype=int)
-        for e in range(n_employees_curr):
+        # Employee off
+        employee_off = np.zeros((n_employees,n_days),dtype=int)
+        for e in range(n_employees):
             off_day = e % n_days
             employee_off[e,off_day]=1
         for d in range(n_days):
             np.random.shuffle(employee_off[:,d])
 
         rows=[]
-        shortage_detail = {f"Day {d+1}":{} for d in range(n_days)}
-        total_shortage=0
-
+        shortage_detail={f"Day {d+1}":{} for d in range(n_days)}
         for d in range(n_days):
             for shift_label, period_range in shift_mapping.items():
                 assigned_emps=set()
                 shortage_periods={}
                 for t in period_range:
                     if t>=n_periods: continue
-                    assigned=[employee_ids[e] for e in range(n_employees_curr) if best_schedule[dept,d,t,e]==1]
+                    assigned=[employee_ids[e] for e in range(n_employees) if best_schedule[dept,d,t,e]==1]
                     assigned_emps.update(assigned)
                     shortage=max(0,DEMAND[dept,d,t]-len(assigned))
                     if shortage>0: shortage_periods[f"P{t+1}"]=shortage
                     shortage_detail[f"Day {d+1}"][f"P{t+1}"]=shortage
-
-                off_today=[employee_ids[e] for e in range(n_employees_curr) if employee_off[e,d]==1]
+                off_today=[employee_ids[e] for e in range(n_employees) if employee_off[e,d]==1]
                 rows.append([f"Day {d+1}",shift_label,", ".join(sorted(assigned_emps)) if assigned_emps else "-", 
-                             ", ".join([f"{k}({v})" for k,v in shortage_periods.items()]) if shortage_periods else "-", 
+                             ", ".join([f"{k}({v})" for k,v in shortage_periods.items()]) if shortage_periods else "-",
                              ", ".join(off_today) if off_today else "-"])
 
         df=pd.DataFrame(rows,columns=["Day","Shift","Employees Assigned","Shortage(People per Period)","Employee Off"])
@@ -204,6 +196,10 @@ if "best_schedule" in st.session_state:
         # Detailed shortage
         st.markdown(f"**Detailed Shortage for Department {dept+1}:**")
         for day, periods in shortage_detail.items():
-            periods_str = ", ".join([f"{p}({v})" for p,v in periods.items() if v>0])
+            periods_str=", ".join([f"{p}({v})" for p,v in periods.items() if v>0])
             st.markdown(f"{day}: {periods_str if periods_str else '-'}")
         st.markdown(f"**Total Shortage for Department {dept+1}: {sum([sum(v.values()) for v in shortage_detail.values()])} people**")
+        # Summary table
+        st.header("📊 Summary of Total Shortage")
+        df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
+        st.dataframe(df_summary, use_container_width=True)
