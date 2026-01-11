@@ -1,6 +1,6 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (8h + 1 day off + fair workload)
+# Employee Shift Scheduling (9-5 & 2-10)
 # ================================
 
 import streamlit as st
@@ -12,13 +12,13 @@ import os
 # ================================
 # CONFIG
 # ================================
-st.title("🐜 ACO Employee Shift Scheduling (8h + 1 Day Off)")
+st.title("🐜 ACO Employee Shift Scheduling (Shift 09-17 & 14-22)")
 
 n_departments = 6
 n_days = 7
 n_periods = 28
 SHIFT_LENGTH = 16  # 8 hours = 16 periods
-ALLOWED_SHIFT_STARTS = [0, 12]  # 08:00–16:00 or 16:00–22:00
+ALLOWED_SHIFT_STARTS = [0, 16]  # 0 = 09-17, 16 = 14-22
 
 # ================================
 # LOAD DEMAND
@@ -115,7 +115,7 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
             schedule = np.zeros((n_departments, days, periods, n_employees))
 
             for dept in range(n_departments):
-                for d in range(days):
+                for d in range(n_days):
                     available_emps = list(range(n_employees))
                     random.shuffle(available_emps)
                     off_emp = available_emps.pop()  # 1 pekerja cuti hari ni
@@ -166,7 +166,7 @@ if st.sidebar.button("🚀 Run ACO"):
         st.success(f"Best Fitness Score: {best_score:.2f}")
 
 # ================================
-# DISPLAY SCHEDULE & SHORTAGE
+# DISPLAY SCHEDULE & SHORTAGE (dengan Employee Off)
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
@@ -176,8 +176,8 @@ if "best_schedule" in st.session_state:
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
     shift_mapping = {
-        "08:00-16:00": range(0, 16),
-        "16:00-22:00": range(16, 28)
+        "09:00-17:00": range(0, 16),
+        "14:00-22:00": range(16, 32)
     }
 
     summary_rows = []
@@ -187,12 +187,24 @@ if "best_schedule" in st.session_state:
         rows = []
         total_shortage = 0
 
+        # Track cuti setiap hari
+        daily_off = []
+
         for d in range(n_days):
+            # Dapatkan employee cuti hari ni
+            available_emps = list(range(n_employees))
+            random.shuffle(available_emps)
+            off_emp_index = available_emps.pop()
+            off_emp_name = employee_ids[off_emp_index]
+            daily_off.append(off_emp_name)
+
             for shift_label, period_range in shift_mapping.items():
                 assigned_emps = set()
                 shortage_periods = {}
-                
+
                 for t in period_range:
+                    if t >= n_periods:
+                        continue
                     assigned = [
                         employee_ids[e]
                         for e in range(n_employees)
@@ -210,12 +222,13 @@ if "best_schedule" in st.session_state:
                     f"Day {d+1}",
                     shift_label,
                     ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
-                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-"
+                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-",
+                    off_emp_name
                 ])
 
         df_dept = pd.DataFrame(
             rows,
-            columns=["Day", "Shift", "Employees Assigned", "Shortage (People per Period)"]
+            columns=["Day", "Shift", "Employees Assigned", "Shortage (People per Period)", "Employee Off"]
         )
 
         def highlight_shortage(val):
@@ -230,3 +243,4 @@ if "best_schedule" in st.session_state:
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
+True)
