@@ -1,13 +1,12 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling
+# Employee Shift Scheduling (Consolidated Shifts)
 # ================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import random
-import matplotlib.pyplot as plt
 import os
 
 # ================================
@@ -40,7 +39,7 @@ for dept in range(n_departments):
 
     df = pd.read_excel(file_path, header=None)
 
-    # SKIP row 0 (period label) & column 0 (day label)
+    # Skip row 0 & column 0 (labels)
     df_subset = df.iloc[1:1+n_days, 1:1+n_periods]
 
     df_subset = (
@@ -170,66 +169,66 @@ if st.sidebar.button("🚀 Run ACO"):
         st.success(f"Best Fitness Score: {best_score:.2f}")
 
 # ================================
-# DISPLAY FULL STAFFING TABLE
+# DISPLAY CONSOLIDATED TABLE
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
     employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
-    # Generate time labels
-    time_labels = []
-    hour = 8
-    minute = 0
-    for _ in range(n_periods):
-        start = f"{hour:02d}:{minute:02d}"
-        minute += 30
-        if minute == 60:
-            hour += 1
-            minute = 0
-        end = f"{hour:02d}:{minute:02d}"
-        time_labels.append(f"{start}-{end}")
+    st.header("📋 Consolidated Staff Schedule per Department")
+    st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
-    st.header("📋 Staff Schedule per Department")
+    # Map periods to 2 shifts
+    shift_mapping = {
+       "08:00-16:00": range(0, 16),    # P1–P16
+       "16:00-22:00": range(16, 28)    # P17–P28
+    }
+
+    }
 
     for dept in range(n_departments):
         st.subheader(f"🏢 Department {dept+1}")
-        staff_matrix = best_schedule[dept]
+        rows = []
 
         for d in range(n_days):
-            st.markdown(f"### 📅 Day {d+1}")
+            for shift_label, period_range in shift_mapping.items():
+                assigned_emps = set()
+                assigned_count = 0
+                required_count = 0
 
-            rows = []
-            for t in range(n_periods):
-                assigned_emps = [
-                    employee_ids[e]
-                    for e in range(n_employees)
-                    if staff_matrix[d, t, e] == 1
-                ]
+                for t in period_range:
+                    # Employees assigned at this period
+                    assigned = [
+                        employee_ids[e]
+                        for e in range(n_employees)
+                        if best_schedule[dept, d, t, e] == 1
+                    ]
+                    assigned_emps.update(assigned)
+                    assigned_count += len(assigned)
+                    required_count += DEMAND[dept, d, t]
 
-                assigned_count = len(assigned_emps)
-                required = DEMAND[dept, d, t]
-                shortage = max(0, required - assigned_count)
+                shortage = max(0, required_count - len(assigned_emps))
 
                 rows.append([
-                    f"P{t+1}",
-                    time_labels[t],
-                    ", ".join(assigned_emps) if assigned_emps else "-",
-                    assigned_count,
-                    required,
+                    f"Day {d+1}",
+                    shift_label,
+                    ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
+                    len(assigned_emps),
+                    required_count,
                     shortage
                 ])
 
-            df_day = pd.DataFrame(
-                rows,
-                columns=[
-                    "Period",
-                    "Time",
-                    "Employees",
-                    "Assigned",
-                    "Required",
-                    "Shortage"
-                ]
-            )
+        df_dept = pd.DataFrame(
+            rows,
+            columns=[
+                "Day",
+                "Shift",
+                "Employees",
+                "Assigned",
+                "Required",
+                "Shortage"
+            ]
+        )
 
-            st.dataframe(df_day, use_container_width=True)
+        st.dataframe(df_dept, use_container_width=True)
 
