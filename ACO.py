@@ -59,8 +59,8 @@ for dept in range(n_departments):
         # Read Excel WITHOUT header
         df = pd.read_excel(file_path, header=None)
 
-        # Force exact size: 7 days x 28 periods
-        df_subset = df.iloc[0:n_days, 0:n_periods]
+        # Skip first row and first coloumn
+        df_subset = df.iloc[1:1+n_days, 1:1+n_periods]
 
         # Convert to numeric (safe)
         df_subset = (
