@@ -199,7 +199,37 @@ if "best_schedule" in st.session_state:
             periods_str=", ".join([f"{p}({v})" for p,v in periods.items() if v>0])
             st.markdown(f"{day}: {periods_str if periods_str else '-'}")
         st.markdown(f"**Total Shortage for Department {dept+1}: {sum([sum(v.values()) for v in shortage_detail.values()])} people**")
-        # Summary table
-        st.header("📊 Summary of Total Shortage")
-        df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
-        st.dataframe(df_summary, use_container_width=True)
+
+# ================================
+# SUMMARY OF TOTAL SHORTAGE
+# ================================
+st.header("📊 Summary of Total Shortage")
+
+summary_rows = []
+overall_total_shortage = 0
+
+for dept in range(n_departments):
+    # ambil n_employees untuk dept
+    n_employees = n_employees_per_dept[dept]
+    # generate employee_off sama macam sebelum ni untuk consistency
+    employee_off = np.zeros((n_employees,n_days),dtype=int)
+    for e in range(n_employees):
+        off_day = e % n_days
+        employee_off[e,off_day]=1
+    for d in range(n_days):
+        np.random.shuffle(employee_off[:,d])
+
+    # kira total shortage untuk dept
+    dept_total_shortage = 0
+    for d in range(n_days):
+        for t in range(n_periods):
+            assigned = np.sum(best_schedule[dept,d,t,:n_employees])
+            shortage = max(0,DEMAND[dept,d,t]-assigned)
+            dept_total_shortage += shortage
+    overall_total_shortage += dept_total_shortage
+    summary_rows.append([f"Department {dept+1}", dept_total_shortage])
+
+df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
+st.dataframe(df_summary, use_container_width=True)
+st.markdown(f"**Overall Total Shortage Across All Departments: {overall_total_shortage} people**")
+
