@@ -26,30 +26,64 @@ n_periods = 28
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 
 # ================================
-# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
+# LOAD DEPARTMENT DEMAND FROM EXCEL
 # ================================
-# ================================
-# LOAD DEPARTMENT EXCEL FILES AUTOMATICALLY
-# ================================
-folder_path = "./Demand/"  # Folder demand file
+
+import os
+import pandas as pd
+import numpy as np
+import streamlit as st
+
+# CONFIG
+n_departments = 6
+n_days = 7
+n_periods = 28
+
+# Initialize DEMAND array
+DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
+
+# Folder demand files
+folder_path = "./Demand/"
+
+st.sidebar.header("📥 Demand Files Status")
 
 for dept in range(n_departments):
-    file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx") 
+    file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")
+
+    # Check file exists
     if not os.path.exists(file_path):
-        st.error(f"File {file_path} not found!")
+        st.sidebar.error(f"❌ Dept{dept+1}.xlsx not found")
         continue
 
-    # Baca Excel tanpa header
-    df = pd.read_excel(file_path, header=None)
-    df = df.dropna(how='all', axis=0)
-    df = df.dropna(how='all', axis=1)
+    try:
+        # Read Excel WITHOUT header
+        df = pd.read_excel(file_path, header=None)
 
-    # Ambil n_days x n_periods sahaja
-    df_subset = df.iloc[:n_days, :n_periods]
-    df_subset = df_subset.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
+        # Force exact size: 7 days x 28 periods
+        df_subset = df.iloc[0:n_days, 0:n_periods]
 
-    # Simpan ke numpy DEMAND
-    DEMAND[dept, :, :] = df_subset.values
+        # Convert to numeric (safe)
+        df_subset = (
+            df_subset
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
+        # Shape validation (IMPORTANT)
+        if df_subset.shape != (n_days, n_periods):
+            st.sidebar.error(
+                f"⚠️ Dept{dept+1} shape error: {df_subset.shape}, expected {(n_days, n_periods)}"
+            )
+            continue
+
+        # Save into DEMAND array
+        DEMAND[dept, :, :] = df_subset.values
+
+        st.sidebar.success(f"✅ Dept{dept+1} loaded")
+
+    except Exception as e:
+        st.sidebar.error(f"❌ Dept{dept+1} error: {e}")
 
 # ================================
 # FITNESS FUNCTION
