@@ -5,7 +5,7 @@
 # - Fitness convergence
 # - Heatmap
 # - Pareto front
-# - Rotating off-day schedule (fair)
+# - Minimum 1 off-day per employee per week (max 1)
 # ================================
 
 import streamlit as st
@@ -126,23 +126,20 @@ def compute_objectives(schedule, demand, max_hours):
     return total_shortage, workload_penalty
 
 # ================================
-# ROTATING OFF-DAY SCHEDULE (FAIR)
+# MINIMUM 1 OFF-DAY PER EMPLOYEE
 # ================================
-def generate_fair_off_schedule(n_employees, n_days):
+def generate_min_one_off_schedule(n_employees, n_days):
+    """
+    Setiap pekerja cuti **sekali sahaja** per minggu.
+    Tidak boleh cuti lebih dari 1 kali.
+    Beberapa pekerja boleh cuti pada hari sama.
+    """
     employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
-    off_per_employee = n_days // n_employees
-    extra_off = n_days % n_employees
 
     for e in range(n_employees):
-        off_days = [(e + k) % n_days for k in range(off_per_employee)]
-        if e < extra_off:
-            off_days.append((e + off_per_employee) % n_days)
-        for d in off_days:
-            employee_off_schedule[e, d] = 1
+        off_day = random.randint(0, n_days - 1)
+        employee_off_schedule[e, off_day] = 1
 
-    # Shuffle per day supaya tidak kaku
-    for d in range(n_days):
-        np.random.shuffle(employee_off_schedule[:, d])
     return employee_off_schedule
 
 # ================================
@@ -171,8 +168,8 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             for dept in range(n_departments):
                 n_employees = n_employees_per_dept[dept]
 
-                # Generate fair off schedule
-                employee_off_schedule = generate_fair_off_schedule(n_employees, n_days)
+                # Generate min 1 off-day per employee
+                employee_off_schedule = generate_min_one_off_schedule(n_employees, n_days)
 
                 # Assign shifts
                 for d in range(n_days):
@@ -300,8 +297,8 @@ if "best_schedule" in st.session_state:
         n_employees = n_employees_per_dept[dept]
         employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
-        # Fair off schedule
-        employee_off_schedule = generate_fair_off_schedule(n_employees, n_days)
+        # Min 1 off-day per employee
+        employee_off_schedule = generate_min_one_off_schedule(n_employees, n_days)
 
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
