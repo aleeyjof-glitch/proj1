@@ -178,42 +178,42 @@ if "best_schedule" in st.session_state:
     st.header("📋 Consolidated Staff Schedule per Department")
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
-    # Map periods to 2 shifts
     shift_mapping = {
        "08:00-16:00": range(0, 16),    # P1–P16
        "16:00-22:00": range(16, 28)    # P17–P28
     }
 
+    summary_rows = []
+
     for dept in range(n_departments):
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
+        total_shortage = 0
 
         for d in range(n_days):
             for shift_label, period_range in shift_mapping.items():
+                shortage_periods = []
                 assigned_emps = set()
-                assigned_count = 0
-                required_count = 0
 
                 for t in period_range:
-                    # Employees assigned at this period
                     assigned = [
                         employee_ids[e]
                         for e in range(n_employees)
                         if best_schedule[dept, d, t, e] == 1
                     ]
                     assigned_emps.update(assigned)
-                    assigned_count += len(assigned)
-                    required_count += DEMAND[dept, d, t]
+                    shortage = DEMAND[dept, d, t] - len(assigned)
+                    if shortage > 0:
+                        shortage_periods.append(f"P{t+1}")
 
-                shortage = max(0, required_count - len(assigned_emps))
+                shift_shortage = len(shortage_periods)
+                total_shortage += shift_shortage
 
                 rows.append([
                     f"Day {d+1}",
                     shift_label,
                     ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
-                    len(assigned_emps),
-                    required_count,
-                    shortage
+                    ", ".join(shortage_periods) if shortage_periods else "-"
                 ])
 
         df_dept = pd.DataFrame(
@@ -221,12 +221,21 @@ if "best_schedule" in st.session_state:
             columns=[
                 "Day",
                 "Shift",
-                "Employees",
-                "Assigned",
-                "Required",
-                "Shortage"
+                "Employees Assigned",
+                "Shortage at Periods"
             ]
         )
 
-        st.dataframe(df_dept, use_container_width=True)
+        # Highlight shortage cells
+        def highlight_shortage(val):
+            return "background-color: red; color: white" if val != "-" else ""
 
+        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage at Periods"]), use_container_width=True)
+        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} periods**")
+
+        summary_rows.append([f"Department {dept+1}", total_shortage])
+
+    # Summary table
+    st.header("📊 Summary of Total Shortage")
+    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (Periods)"])
+    st.dataframe(df_summary, use_container_width=True)
