@@ -1,6 +1,6 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (09-17 & 14-22, per department employees)
+# Employee Shift Scheduling (09-17 & 14-22, per department employees, balanced employee off)
 # ================================
 
 import streamlit as st
@@ -117,19 +117,29 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
 
             for dept in range(n_departments):
                 n_employees = n_employees_per_dept[dept]
+                # ----------------------------
+                # Generate balanced employee off schedule
+                # ----------------------------
+                employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
+                for e in range(n_employees):
+                    off_day = e % n_days
+                    employee_off_schedule[e, off_day] = 1
+                # Shuffle to randomize distribution
                 for d in range(n_days):
-                    available_emps = list(range(n_employees))
-                    random.shuffle(available_emps)
-                    off_emp_index = available_emps.pop()  # 1 pekerja cuti
+                    np.random.shuffle(employee_off_schedule[:, d])
 
+                # Assign shifts
+                for d in range(n_days):
+                    available_emps = [e for e in range(n_employees) if employee_off_schedule[e, d] == 0]
+                    random.shuffle(available_emps)
                     half = len(available_emps) // 2
                     shift1_emps = available_emps[:half]
                     shift2_emps = available_emps[half:]
 
                     for e in shift1_emps:
-                        schedule[dept, d, 0:SHIFT_LENGTH, e] = 1  # 09-17
+                        schedule[dept, d, 0:SHIFT_LENGTH, e] = 1
                     for e in shift2_emps:
-                        schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1  # 14-22
+                        schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
 
             score = fitness(schedule, demand, max_hours)
             solutions.append(schedule)
@@ -194,11 +204,10 @@ if st.sidebar.button("🚀 Run ACO"):
         st.success(f"Best Fitness Score: {best_score:.2f}")
 
 # ================================
-# DISPLAY SCHEDULE & SHORTAGE (dengan Employee Off)
+# DISPLAY SCHEDULE & SHORTAGE
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
-
     st.header("📋 Consolidated Staff Schedule per Department")
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
@@ -213,20 +222,19 @@ if "best_schedule" in st.session_state:
         n_employees = n_employees_per_dept[dept]
         employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
+        # Generate employee off schedule (same as in ACO)
+        employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
+        for e in range(n_employees):
+            off_day = e % n_days
+            employee_off_schedule[e, off_day] = 1
+        for d in range(n_days):
+            np.random.shuffle(employee_off_schedule[:, d])
+
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
         total_shortage = 0
 
         for d in range(n_days):
-            available_emps = list(range(n_employees))
-            random.shuffle(available_emps)
-            off_emp_index = available_emps.pop()
-            off_emp_name = employee_ids[off_emp_index]
-
-            half = len(available_emps) // 2
-            shift1_emps = available_emps[:half]
-            shift2_emps = available_emps[half:]
-
             for shift_label, period_range in shift_mapping.items():
                 assigned_emps = set()
                 shortage_periods = {}
@@ -244,6 +252,9 @@ if "best_schedule" in st.session_state:
                     if shortage > 0:
                         shortage_periods[f"P{t+1}"] = shortage
 
+                # Employee off today
+                off_today = [employee_ids[e] for e in range(n_employees) if employee_off_schedule[e, d] == 1]
+
                 shift_shortage_total = sum(shortage_periods.values())
                 total_shortage += shift_shortage_total
 
@@ -252,7 +263,7 @@ if "best_schedule" in st.session_state:
                     shift_label,
                     ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
                     ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-",
-                    off_emp_name
+                    ", ".join(off_today) if off_today else "-"
                 ])
 
         df_dept = pd.DataFrame(
