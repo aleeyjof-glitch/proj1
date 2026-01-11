@@ -11,6 +11,7 @@ import random
 import os
 import time  # NEW: track computation time
 import matplotlib.pyplot as plt  # NEW: for convergence plot
+import seaborn as sns  # NEW: for heatmap
 
 # ================================
 # CONFIG
@@ -335,3 +336,26 @@ if "best_schedule" in st.session_state:
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
+import seaborn as sns  # NEW: for heatmap
+
+# ================================
+# NEW: Heatmap of Shortage per Department
+# ================================
+heatmap_data = np.zeros((n_days, len(shift_mapping)))
+
+for d in range(n_days):
+    for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
+        shortage_total = 0
+        for t in period_range:
+            if t >= n_periods:
+                continue
+            assigned_count = np.sum(best_schedule[dept, d, t, :])
+            shortage_total += max(DEMAND[dept, d, t] - assigned_count, 0)
+        heatmap_data[d, idx] = shortage_total
+
+st.subheader(f"🌡️ Shortage Heatmap - Department {dept+1}")
+fig, ax = plt.subplots(figsize=(6, 3))
+sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="Reds", xticklabels=list(shift_mapping.keys()), yticklabels=[f"Day {i+1}" for i in range(n_days)], cbar_kws={'label': 'Shortage'})
+ax.set_ylabel("Day")
+ax.set_xlabel("Shift")
+st.pyplot(fig)
