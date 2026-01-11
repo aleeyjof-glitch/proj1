@@ -1,6 +1,6 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (Consolidated Shifts)
+# Employee Shift Scheduling (8h + 1 day off + fair workload)
 # ================================
 
 import streamlit as st
@@ -12,15 +12,13 @@ import os
 # ================================
 # CONFIG
 # ================================
-st.title("🐜 ACO Employee Shift Scheduling")
+st.title("🐜 ACO Employee Shift Scheduling (8h + 1 Day Off)")
 
 n_departments = 6
 n_days = 7
 n_periods = 28
 SHIFT_LENGTH = 16  # 8 hours = 16 periods
-
-# Allowed shift start (index)
-ALLOWED_SHIFT_STARTS = [0, 12]  # P1 (8am) or P13 (2pm)
+ALLOWED_SHIFT_STARTS = [0, 12]  # 08:00–16:00 or 16:00–22:00
 
 # ================================
 # LOAD DEMAND
@@ -32,22 +30,13 @@ st.sidebar.header("📥 Demand Files")
 
 for dept in range(n_departments):
     file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")
-
     if not os.path.exists(file_path):
         st.sidebar.error(f"❌ Dept{dept+1}.xlsx not found")
         continue
 
     df = pd.read_excel(file_path, header=None)
-
-    # Skip row 0 & column 0 (labels)
     df_subset = df.iloc[1:1+n_days, 1:1+n_periods]
-
-    df_subset = (
-        df_subset
-        .apply(pd.to_numeric, errors="coerce")
-        .fillna(0)
-        .astype(int)
-    )
+    df_subset = df_subset.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 
     if df_subset.shape != (n_days, n_periods):
         st.sidebar.error(f"⚠️ Dept{dept+1} wrong shape {df_subset.shape}")
@@ -56,7 +45,7 @@ for dept in range(n_departments):
         st.sidebar.success(f"✅ Dept{dept+1} loaded")
 
 # ================================
-# HELPER FUNCTION
+# HELPER FUNCTIONS
 # ================================
 def longest_consecutive_ones(arr):
     max_len = 0
@@ -85,22 +74,26 @@ def fitness(schedule, demand, max_hours):
                     penalty += (required - assigned) * 1000
 
         for e in range(employees):
-            total_hours = np.sum(schedule[dept, :, :, e])
+            total_hours = np.sum(schedule[:, :, :, e])
             if total_hours > max_hours:
                 penalty += (total_hours - max_hours) * 200
 
-        # ---- 8 HOURS CONSECUTIVE CONSTRAINT ----
+            # Pastikan 1 hari cuti
+            days_worked = np.sum(np.sum(schedule[:, :, :, e], axis=2) > 0)
+            if days_worked > (n_days - 1):
+                penalty += 2000
+            elif days_worked < (n_days - 1):
+                penalty += 500
+
+        # Pastikan shift 8h penuh dan consecutive
         for d in range(days):
             for e in range(employees):
-                daily = schedule[dept, d, :, e]
+                daily = schedule[:, d, :, e].sum(axis=0)
                 worked = np.sum(daily)
-
                 if worked > 0 and worked != SHIFT_LENGTH:
                     penalty += 3000
-
-                if worked == SHIFT_LENGTH:
-                    if longest_consecutive_ones(daily) < SHIFT_LENGTH:
-                        penalty += 5000
+                if worked == SHIFT_LENGTH and longest_consecutive_ones(daily) < SHIFT_LENGTH:
+                    penalty += 5000
 
     return penalty
 
@@ -123,8 +116,11 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
 
             for dept in range(n_departments):
                 for d in range(days):
-                    for e in range(n_employees):
-                        # Choose shift start
+                    available_emps = list(range(n_employees))
+                    random.shuffle(available_emps)
+                    off_emp = available_emps.pop()  # 1 pekerja cuti hari ni
+
+                    for e in available_emps:
                         if random.random() < 0.7:
                             start = random.choice(ALLOWED_SHIFT_STARTS)
                             schedule[dept, d, start:start+SHIFT_LENGTH, e] = 1
@@ -137,6 +133,7 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
                 best_score = score
                 best_schedule = schedule.copy()
 
+        # Update pheromone
         pheromone *= (1 - evaporation)
         for sol, sc in zip(solutions, scores):
             pheromone += (Q / (1 + sc)) * sol
@@ -156,7 +153,7 @@ Q = st.sidebar.slider("Q", 1, 100, 50)
 max_hours = st.sidebar.slider("Max Hours / Week", 20, 60, 40)
 
 # ================================
-# RUN BUTTON
+# RUN ACO
 # ================================
 if st.sidebar.button("🚀 Run ACO"):
     with st.spinner("Optimizing schedule..."):
@@ -169,7 +166,7 @@ if st.sidebar.button("🚀 Run ACO"):
         st.success(f"Best Fitness Score: {best_score:.2f}")
 
 # ================================
-# DISPLAY CONSOLIDATED TABLE
+# DISPLAY SCHEDULE & SHORTAGE
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
@@ -179,8 +176,8 @@ if "best_schedule" in st.session_state:
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
     shift_mapping = {
-       "08:00-16:00": range(0, 16),    # P1–P16
-       "16:00-22:00": range(16, 28)    # P17–P28
+        "08:00-16:00": range(0, 16),
+        "16:00-22:00": range(16, 28)
     }
 
     summary_rows = []
@@ -192,9 +189,9 @@ if "best_schedule" in st.session_state:
 
         for d in range(n_days):
             for shift_label, period_range in shift_mapping.items():
-                shortage_periods = []
                 assigned_emps = set()
-
+                shortage_periods = {}
+                
                 for t in period_range:
                     assigned = [
                         employee_ids[e]
@@ -204,38 +201,32 @@ if "best_schedule" in st.session_state:
                     assigned_emps.update(assigned)
                     shortage = DEMAND[dept, d, t] - len(assigned)
                     if shortage > 0:
-                        shortage_periods.append(f"P{t+1}")
+                        shortage_periods[f"P{t+1}"] = shortage
 
-                shift_shortage = len(shortage_periods)
-                total_shortage += shift_shortage
+                shift_shortage_total = sum(shortage_periods.values())
+                total_shortage += shift_shortage_total
 
                 rows.append([
                     f"Day {d+1}",
                     shift_label,
                     ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
-                    ", ".join(shortage_periods) if shortage_periods else "-"
+                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-"
                 ])
 
         df_dept = pd.DataFrame(
             rows,
-            columns=[
-                "Day",
-                "Shift",
-                "Employees Assigned",
-                "Shortage at Periods"
-            ]
+            columns=["Day", "Shift", "Employees Assigned", "Shortage (People per Period)"]
         )
 
-        # Highlight shortage cells
         def highlight_shortage(val):
             return "background-color: red; color: white" if val != "-" else ""
 
-        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage at Periods"]), use_container_width=True)
-        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} periods**")
+        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage (People per Period)"]), use_container_width=True)
+        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
 
         summary_rows.append([f"Department {dept+1}", total_shortage])
 
     # Summary table
     st.header("📊 Summary of Total Shortage")
-    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (Periods)"])
+    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
