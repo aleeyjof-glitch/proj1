@@ -284,17 +284,22 @@ if "best_schedule" in st.session_state:
         # Generate employee off schedule
         employee_off_schedule = np.zeros((n_employees, n_days), dtype=int)
 
-        # Assign each employee at least 1 off-day
-        days = list(range(n_days))
-        for e in range(n_employees):
-            off_day = random.choice(days)
-            employee_off_schedule[e, off_day] = 1
+        # Tentukan jumlah cuti per pekerja
+        off_per_employee = n_days // n_employees  # minimum 1
+        extra_off = n_days % n_employees          # ada pekerja dapat 1 extra cuti jika n_days bukan kelipatan n_employees
 
-        # Pastikan setiap hari ada sekurang-kurangnya 1 orang cuti
-        for d in range(n_days):
-            if np.sum(employee_off_schedule[:, d]) == 0:
-                 e = random.randint(0, n_employees-1)
+        for e in range(n_employees):
+           # Hari cuti untuk pekerja e
+           off_days = [(e + k) % n_days for k in range(off_per_employee)]
+           # Tambah extra cuti jika perlu
+           if e < extra_off:
+                 off_days.append((e + off_per_employee) % n_days)
+           for d in off_days:
                  employee_off_schedule[e, d] = 1
+
+# Shuffle supaya cuti lebih natural
+for d in range(n_days):
+    np.random.shuffle(employee_off_schedule[:, d])
 
 
         st.subheader(f"🏢 Department {dept+1}")
