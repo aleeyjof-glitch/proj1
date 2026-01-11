@@ -1,6 +1,6 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (09-17 & 14-22)
+# Employee Shift Scheduling (09-17 & 14-22, per department employees)
 # ================================
 
 import streamlit as st
@@ -17,8 +17,8 @@ st.title("🐜 ACO Employee Shift Scheduling (09-17 & 14-22)")
 n_departments = 6
 n_days = 7
 n_periods = 28
-SHIFT_LENGTH = 14  # 8 hours = 14 periods (scaled for 28 periods)
-ALLOWED_SHIFT_STARTS = [0, 14]  # 0=09-17, 14=14-22
+SHIFT_LENGTH = 14  # 8 hours = 14 periods
+ALLOWED_SHIFT_STARTS = [0, 14]  # 09-17 or 14-22
 
 # ================================
 # LOAD DEMAND
@@ -99,21 +99,24 @@ def fitness(schedule, demand, max_hours):
 # ================================
 # ACO ALGORITHM
 # ================================
-def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, max_hours):
+def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporation, Q, max_hours, early_stop=10):
     n_departments, days, periods = demand.shape
-    pheromone = np.ones((n_departments, days, periods, n_employees))
+    max_employees = max(n_employees_per_dept)
+    pheromone = np.ones((n_departments, days, periods, max_employees))
 
     best_schedule = None
     best_score = float("inf")
+    no_improve_count = 0
 
-    for _ in range(n_iter):
+    for iter_num in range(n_iter):
         solutions = []
         scores = []
 
         for _ in range(n_ants):
-            schedule = np.zeros((n_departments, days, periods, n_employees))
+            schedule = np.zeros((n_departments, days, periods, max_employees))
 
             for dept in range(n_departments):
+                n_employees = n_employees_per_dept[dept]
                 for d in range(n_days):
                     available_emps = list(range(n_employees))
                     random.shuffle(available_emps)
@@ -135,11 +138,18 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
             if score < best_score:
                 best_score = score
                 best_schedule = schedule.copy()
+                no_improve_count = 0
+            else:
+                no_improve_count += 1
 
         # Update pheromone
         pheromone *= (1 - evaporation)
         for sol, sc in zip(solutions, scores):
             pheromone += (Q / (1 + sc)) * sol
+
+        if no_improve_count >= early_stop:
+            print(f"Early stopping at iteration {iter_num+1}, best score: {best_score}")
+            break
 
     return best_schedule, best_score
 
@@ -147,13 +157,21 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
 # STREAMLIT CONTROLS
 # ================================
 st.sidebar.header("⚙️ ACO Parameters")
-n_employees = st.sidebar.slider("Employees", 5, 50, 20)
 n_ants = st.sidebar.slider("Ants", 5, 50, 20)
 n_iter = st.sidebar.slider("Iterations", 10, 200, 50)
 alpha = st.sidebar.slider("Alpha", 0.1, 5.0, 1.0)
 evaporation = st.sidebar.slider("Evaporation", 0.01, 0.9, 0.3)
 Q = st.sidebar.slider("Q", 1, 100, 50)
 max_hours = st.sidebar.slider("Max Hours / Week", 20, 60, 40)
+early_stop = st.sidebar.slider("Early Stop Iterations", 1, 50, 10)
+
+st.sidebar.header("👥 Employees per Department")
+n_employees_per_dept = []
+for dept in range(n_departments):
+    n_emp = st.sidebar.number_input(
+        f"Dept {dept+1} Employees", min_value=1, max_value=50, value=20, step=1
+    )
+    n_employees_per_dept.append(n_emp)
 
 # ================================
 # RUN ACO
@@ -161,8 +179,15 @@ max_hours = st.sidebar.slider("Max Hours / Week", 20, 60, 40)
 if st.sidebar.button("🚀 Run ACO"):
     with st.spinner("Optimizing schedule..."):
         best_schedule, best_score = ACO_scheduler(
-            DEMAND, n_employees, n_ants, n_iter,
-            alpha, evaporation, Q, max_hours
+            DEMAND,
+            n_employees_per_dept,
+            n_ants,
+            n_iter,
+            alpha,
+            evaporation,
+            Q,
+            max_hours,
+            early_stop
         )
         st.session_state.best_schedule = best_schedule
         st.session_state.best_score = best_score
@@ -173,7 +198,6 @@ if st.sidebar.button("🚀 Run ACO"):
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
-    employee_ids = [f"E{i+1}" for i in range(n_employees)]
 
     st.header("📋 Consolidated Staff Schedule per Department")
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
@@ -186,6 +210,9 @@ if "best_schedule" in st.session_state:
     summary_rows = []
 
     for dept in range(n_departments):
+        n_employees = n_employees_per_dept[dept]
+        employee_ids = [f"E{i+1}" for i in range(n_employees)]
+
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
         total_shortage = 0
@@ -238,7 +265,6 @@ if "best_schedule" in st.session_state:
 
         st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage (People per Period)"]), use_container_width=True)
         st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
-
         summary_rows.append([f"Department {dept+1}", total_shortage])
 
     # Summary table
