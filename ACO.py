@@ -2,6 +2,7 @@
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22)
 # Fully consistent off-day & shift assignment
+# Shortage column fixed to right
 # ================================
 
 import streamlit as st
@@ -330,22 +331,30 @@ if "best_schedule" in st.session_state:
                 total_shortage += shortage_total_shift
                 heatmap_data[d, idx] = shortage_total_shift
 
+                # ---- append row with Shortage paling kanan ----
                 rows.append([
                     f"Day {d+1}",
                     shift_label,
                     ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
-                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-",
-                    ", ".join(off_today) if off_today else "-"
+                    ", ".join(off_today) if off_today else "-",   # Employee Off
+                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-"  # Shortage
                 ])
 
         # Display schedule table
         df_dept = pd.DataFrame(
             rows,
-            columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage"]
+            columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage (People per Period)"]
         )
+
         def highlight_shortage(val):
             return "background-color: red; color: white" if val != "-" else ""
-        st.dataframe(df_dept.style.applymap(highlight_shortage, subset=["Shortage"]), use_container_width=True)
+
+        st.dataframe(
+            df_dept.style.applymap(highlight_shortage, subset=["Shortage (People per Period)"])
+                     .set_properties(**{"text-align": "right"}, subset=["Shortage (People per Period)"]),
+            use_container_width=True
+        )
+
         st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
         summary_rows.append([f"Department {dept+1}", total_shortage])
 
@@ -368,4 +377,3 @@ if "best_schedule" in st.session_state:
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
-
