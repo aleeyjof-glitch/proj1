@@ -1,6 +1,7 @@
 # ================================
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22, per department employees, balanced employee off)
+# Extended with Performance Analysis & Streamlit Dashboard
 # ================================
 
 import streamlit as st
@@ -8,6 +9,8 @@ import pandas as pd
 import numpy as np
 import random
 import os
+import time  # NEW: track computation time
+import matplotlib.pyplot as plt  # NEW: for convergence plot
 
 # ================================
 # CONFIG
@@ -97,6 +100,29 @@ def fitness(schedule, demand, max_hours):
     return penalty
 
 # ================================
+# MULTI-OBJECTIVE / EXTENDED ANALYSIS
+# ================================
+def compute_objectives(schedule, demand, max_hours):
+    n_departments, days, periods, employees = schedule.shape
+    total_shortage = 0
+    workload_penalty = 0
+
+    for dept in range(n_departments):
+        for d in range(days):
+            for t in range(periods):
+                assigned = np.sum(schedule[dept, d, t, :])
+                required = demand[dept, d, t]
+                if assigned < required:
+                    total_shortage += (required - assigned)
+
+        for e in range(employees):
+            total_hours = np.sum(schedule[:, :, :, e])
+            if total_hours > max_hours:
+                workload_penalty += (total_hours - max_hours)
+
+    return total_shortage, workload_penalty
+
+# ================================
 # ACO ALGORITHM
 # ================================
 def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporation, Q, max_hours, early_stop=10):
@@ -107,6 +133,9 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     best_schedule = None
     best_score = float("inf")
     no_improve_count = 0
+    fitness_history = []  # NEW: track best fitness per iteration
+
+    start_time = time.time()  # NEW: start timer
 
     for iter_num in range(n_iter):
         solutions = []
@@ -152,6 +181,8 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             else:
                 no_improve_count += 1
 
+        fitness_history.append(best_score)  # NEW: store best fitness per iteration
+
         # Update pheromone
         pheromone *= (1 - evaporation)
         for sol, sc in zip(solutions, scores):
@@ -161,7 +192,10 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             print(f"Early stopping at iteration {iter_num+1}, best score: {best_score}")
             break
 
-    return best_schedule, best_score
+    end_time = time.time()
+    run_time = end_time - start_time  # NEW: total computation time
+
+    return best_schedule, best_score, fitness_history, run_time
 
 # ================================
 # STREAMLIT CONTROLS
@@ -188,7 +222,7 @@ for dept in range(n_departments):
 # ================================
 if st.sidebar.button("🚀 Run ACO"):
     with st.spinner("Optimizing schedule..."):
-        best_schedule, best_score = ACO_scheduler(
+        best_schedule, best_score, fitness_history, run_time = ACO_scheduler(
             DEMAND,
             n_employees_per_dept,
             n_ants,
@@ -201,7 +235,26 @@ if st.sidebar.button("🚀 Run ACO"):
         )
         st.session_state.best_schedule = best_schedule
         st.session_state.best_score = best_score
+        st.session_state.fitness_history = fitness_history  # NEW
+        st.session_state.run_time = run_time  # NEW
+
         st.success(f"Best Fitness Score: {best_score:.2f}")
+        st.info(f"Computation Time: {run_time:.2f} seconds")
+
+        # NEW: Convergence Curve
+        st.subheader("📈 Fitness Convergence")
+        fig, ax = plt.subplots()
+        ax.plot(fitness_history, marker='o')
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Best Fitness Score")
+        ax.set_title("ACO Convergence Curve")
+        st.pyplot(fig)
+
+        # NEW: Multi-objective Summary
+        total_shortage, workload_penalty = compute_objectives(best_schedule, DEMAND, max_hours)
+        st.subheader("🎯 Multi-Objective Summary")
+        st.write(f"Total Shortage: {total_shortage}")
+        st.write(f"Workload Penalty (hours over max): {workload_penalty}")
 
 # ================================
 # DISPLAY SCHEDULE & SHORTAGE
@@ -282,4 +335,3 @@ if "best_schedule" in st.session_state:
     st.header("📊 Summary of Total Shortage")
     df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
     st.dataframe(df_summary, use_container_width=True)
-
