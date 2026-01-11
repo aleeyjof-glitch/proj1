@@ -243,4 +243,5 @@ if "best_schedule" in st.session_state:
 
     # Summary table
     st.header("📊 Summary of Total Shortage")
-    df_summary = pd.DataFrame(summary_rows, column
+    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
+    st.dataframe(df_summary, use_container_width=True)
