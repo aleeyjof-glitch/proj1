@@ -184,8 +184,6 @@ if "best_schedule" in st.session_state:
        "16:00-22:00": range(16, 28)    # P17–P28
     }
 
-    }
-
     for dept in range(n_departments):
         st.subheader(f"🏢 Department {dept+1}")
         rows = []
