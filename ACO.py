@@ -1,6 +1,6 @@
 # ================================
 # ACO.py
-# Employee Shift Scheduling (9-5 & 2-10)
+# Employee Shift Scheduling (09-17 & 14-22)
 # ================================
 
 import streamlit as st
@@ -12,13 +12,13 @@ import os
 # ================================
 # CONFIG
 # ================================
-st.title("🐜 ACO Employee Shift Scheduling (Shift 09-17 & 14-22)")
+st.title("🐜 ACO Employee Shift Scheduling (09-17 & 14-22)")
 
 n_departments = 6
 n_days = 7
 n_periods = 28
-SHIFT_LENGTH = 16  # 8 hours = 16 periods
-ALLOWED_SHIFT_STARTS = [0, 16]  # 0 = 09-17, 16 = 14-22
+SHIFT_LENGTH = 14  # 8 hours = 14 periods (scaled for 28 periods)
+ALLOWED_SHIFT_STARTS = [0, 14]  # 0=09-17, 14=14-22
 
 # ================================
 # LOAD DEMAND
@@ -27,7 +27,6 @@ DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
 folder_path = "./Demand/"
 
 st.sidebar.header("📥 Demand Files")
-
 for dept in range(n_departments):
     file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")
     if not os.path.exists(file_path):
@@ -88,7 +87,7 @@ def fitness(schedule, demand, max_hours):
         # Pastikan shift 8h penuh dan consecutive
         for d in range(days):
             for e in range(employees):
-                daily = schedule[:, d, :, e].sum(axis=0)
+                daily = schedule[dept, d, :, e]
                 worked = np.sum(daily)
                 if worked > 0 and worked != SHIFT_LENGTH:
                     penalty += 3000
@@ -118,12 +117,16 @@ def ACO_scheduler(demand, n_employees, n_ants, n_iter, alpha, evaporation, Q, ma
                 for d in range(n_days):
                     available_emps = list(range(n_employees))
                     random.shuffle(available_emps)
-                    off_emp = available_emps.pop()  # 1 pekerja cuti hari ni
+                    off_emp_index = available_emps.pop()  # 1 pekerja cuti
 
-                    for e in available_emps:
-                        if random.random() < 0.7:
-                            start = random.choice(ALLOWED_SHIFT_STARTS)
-                            schedule[dept, d, start:start+SHIFT_LENGTH, e] = 1
+                    half = len(available_emps) // 2
+                    shift1_emps = available_emps[:half]
+                    shift2_emps = available_emps[half:]
+
+                    for e in shift1_emps:
+                        schedule[dept, d, 0:SHIFT_LENGTH, e] = 1  # 09-17
+                    for e in shift2_emps:
+                        schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1  # 14-22
 
             score = fitness(schedule, demand, max_hours)
             solutions.append(schedule)
@@ -176,8 +179,8 @@ if "best_schedule" in st.session_state:
     st.subheader(f"🏢 Overall Fitness Score: {st.session_state.best_score:.2f}")
 
     shift_mapping = {
-        "09:00-17:00": range(0, 16),
-        "14:00-22:00": range(16, 32)
+        "09:00-17:00": range(0, SHIFT_LENGTH),
+        "14:00-22:00": range(14, 14+SHIFT_LENGTH)
     }
 
     summary_rows = []
@@ -187,16 +190,15 @@ if "best_schedule" in st.session_state:
         rows = []
         total_shortage = 0
 
-        # Track cuti setiap hari
-        daily_off = []
-
         for d in range(n_days):
-            # Dapatkan employee cuti hari ni
             available_emps = list(range(n_employees))
             random.shuffle(available_emps)
             off_emp_index = available_emps.pop()
             off_emp_name = employee_ids[off_emp_index]
-            daily_off.append(off_emp_name)
+
+            half = len(available_emps) // 2
+            shift1_emps = available_emps[:half]
+            shift2_emps = available_emps[half:]
 
             for shift_label, period_range in shift_mapping.items():
                 assigned_emps = set()
@@ -241,5 +243,4 @@ if "best_schedule" in st.session_state:
 
     # Summary table
     st.header("📊 Summary of Total Shortage")
-    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
-    st.dataframe(df_summary, use_container_width=True)
+    df_summary = pd.DataFrame(summary_rows, column
