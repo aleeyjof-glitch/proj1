@@ -254,22 +254,22 @@ if st.sidebar.button("🚀 Run ACO"):
     st.info(f"Computation Time: {run_time:.2f} seconds")
 
     # ================================
-    # Fitness Convergence
+    # Fitness Convergence - Single Line
     # ================================
-    st.subheader("📈 Fitness Convergence")
     iters = [x["iteration"] for x in fitness_history]
     best = [x["best"] for x in fitness_history]
-    mean = [x["mean"] for x in fitness_history]
-    worst = [x["worst"] for x in fitness_history]
 
     fig, ax = plt.subplots()
-    ax.plot(iters, best, marker='o', label="Best")
-    ax.plot(iters, mean, marker='x', label="Mean")
-    ax.plot(iters, worst, marker='.', label="Worst")
+    ax.plot(iters, best, marker='o', color='blue', label="Best Fitness")
+    ax.axvline(iters[-1], color='red', linestyle='--', label="Stop Iteration")  # highlight last iteration
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Fitness")
+    ax.set_title("Fitness Convergence (Best Fitness)")
     ax.legend()
     st.pyplot(fig)
+
+    st.write(f"Algorithm stopped at iteration: {iters[-1]}")
+
 
     # ================================
     # Pareto Front
