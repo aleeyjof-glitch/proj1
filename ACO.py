@@ -1,6 +1,7 @@
 # ================================
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22)
+# Modified: best_schedule from Pareto front
 # ================================
 
 import streamlit as st
@@ -20,7 +21,7 @@ n_departments = 6
 n_days = 7
 n_periods = 28
 SHIFT_LENGTH = 14
-REST_PROB = 0.25   # 🔥 FIX UTAMA: benarkan employee rehat
+REST_PROB = 0.25
 
 # ================================
 # LOAD DEMAND
@@ -125,16 +126,18 @@ def generate_min_one_off_schedule(n_employees, n_days):
     return off
 
 # ================================
-# ACO SCHEDULER (FIXED)
+# ACO SCHEDULER
 # ================================
 def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
                   alpha, evaporation, Q, max_hours, early_stop):
 
     pheromone = np.ones((n_departments, n_days, 2, max(n_employees_per_dept)))
-    best_schedule = None
-    best_score = float("inf")
     fitness_history = []
     pareto_raw = []
+    pareto_schedules = []
+    best_score = float("inf")
+    best_schedule = None
+    best_off_schedules = None
     no_improve = 0
     start_time = time.time()
 
@@ -150,7 +153,6 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
 
                 for d in range(n_days):
                     for e in range(n_emp):
-                        # 🔥 FIX UTAMA
                         if off[e, d] == 1 or random.random() < REST_PROB:
                             continue
 
@@ -163,10 +165,13 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
                         else:
                             schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
 
+            # Track fitness & Pareto objectives
             score = fitness(schedule, demand, max_hours)
             s, w = compute_objectives(schedule, demand, max_hours)
             pareto_raw.append((s, w))
+            pareto_schedules.append(schedule.copy())
 
+            # Track best_schedule by total fitness
             if score < best_score:
                 best_score = score
                 best_schedule = schedule.copy()
@@ -182,8 +187,20 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
         if no_improve >= early_stop:
             break
 
+    # Filter Pareto front
+    pareto_filtered = pareto_filter(pareto_raw)
+    filtered_schedules = [pareto_schedules[i] for i, p in enumerate(pareto_raw) if p in pareto_filtered]
+
+    # Re-choose best_schedule from Pareto based on full fitness
+    best_score_from_pareto = float("inf")
+    for sched in filtered_schedules:
+        score = fitness(sched, demand, max_hours)
+        if score < best_score_from_pareto:
+            best_score_from_pareto = score
+            best_schedule = sched.copy()
+
     run_time = time.time() - start_time
-    return best_schedule, best_score, fitness_history, pareto_filter(pareto_raw), run_time, best_off_schedules
+    return best_schedule, best_score_from_pareto, fitness_history, pareto_filtered, run_time, best_off_schedules
 
 # ================================
 # STREAMLIT CONTROLS
@@ -235,7 +252,7 @@ if st.sidebar.button("🚀 Run ACO"):
     st.pyplot(fig)
 
 # ================================
-# DISPLAY SCHEDULE & SUMMARY (ASAL)
+# DISPLAY SCHEDULE & SUMMARY
 # ================================
 if "best_schedule" in st.session_state:
     best_schedule = st.session_state.best_schedule
