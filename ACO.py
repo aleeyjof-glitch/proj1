@@ -1,9 +1,5 @@
-# ================================
-# ACO.py
+# For ACO algorithm
 # Employee Shift Scheduling (09-17 & 14-22)
-# Full version: Pareto, best schedule, fitness breakdown, table, heatmap, summary, convergence curve
-# Early stop per iteration
-# ================================
 
 import streamlit as st
 import pandas as pd
@@ -13,16 +9,13 @@ import os
 import time
 import matplotlib.pyplot as plt
 
-# ================================
-# CONFIG
-# ================================
-st.title("🐜 ACO Employee Shift Scheduling (09-17 & 14-22)")
+#config
+st.title(" Employee Shift Scheduling (ACO)🐜 ")
 
 n_departments = 6
 n_days = 7
 n_periods = 28
 SHIFT_LENGTH = 14
-REST_PROB = 0.35
 
 # Penalti
 PENALTY_SHORTAGE = 200
@@ -242,6 +235,7 @@ evaporation = st.sidebar.slider("Evaporation",0.01,0.9,0.3)
 Q = st.sidebar.slider("Q",1,100,50)
 max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
 early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
+REST_PROB = st.sidebar.slider("Rest Probability (REST_PROB)",0.0, 0.8, 0.35, step=0.05)
 
 st.sidebar.header("👥 Employees per Department")
 n_employees_per_dept = [
