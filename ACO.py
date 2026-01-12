@@ -29,7 +29,6 @@ PENALTY_NONCONSEC = 200 # if staff work 14 period but not in a row
 DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int) 
 folder_path = "./Demand/" # file name is Demand
 
-st.sidebar.header("📥 Demand Files")
 for dept in range(n_departments):
     file_path = os.path.join(folder_path, f"Dept{dept+1}.xlsx")
     if not os.path.exists(file_path):
@@ -256,13 +255,21 @@ if st.sidebar.button("Run ACO"):
     st.info(f"Computation Time: {run_time:.2f} seconds")
 
     # Fitness Convergence 
-    
+
     iters = [int(x["iteration"]) for x in fitness_history]
     best = [x["best"] for x in fitness_history]
 
     fig, ax = plt.subplots()
-    ax.plot(iters, best, marker='o', color='blue', label="Best Fitness") # best fitness for the iteration
-    ax.axvline(iters[-1], color='red', linestyle='--', label="Stop Iteration")  # highlight last iteration after early stop or max iteration
+    ax.plot(iters, best, marker='o', color='blue', label="Best Fitness per Iteration")
+
+    # Highlight overall best fitness
+    min_fitness = min(best)
+    min_index = best.index(min_fitness)
+    ax.plot(iters[min_index], min_fitness, marker='o', color='red', markersize=10, label="Overall Best Fitness")
+
+    # Highlight last iteration (stop)
+    ax.axvline(iters[-1], color='green', linestyle='--', label="Stop Iteration")
+
     ax.set_xticks(iters)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Fitness")
@@ -270,7 +277,9 @@ if st.sidebar.button("Run ACO"):
     ax.legend()
     st.pyplot(fig)
 
-    st.write(f"Algorithm stopped at iteration: {iters[-1]}") 
+    st.write(f"Algorithm stopped at iteration: {iters[-1]}")
+    st.write(f"Overall Best Fitness: {min_fitness} at iteration {iters[min_index]}")
+
 
     # Pareto Front
 
