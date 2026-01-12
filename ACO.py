@@ -282,51 +282,87 @@ if st.sidebar.button("🚀 Run ACO"):
     breakdown = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
     st.json(breakdown)
 
-    # ================================
-    # Table + Heatmap per department
-    # ================================
-    st.subheader("📋 Department Schedule & Heatmap")
-    shift_mapping = {"09:00-17:00": range(0, SHIFT_LENGTH),
-                     "14:00-22:00": range(14, 14+SHIFT_LENGTH)}
+# ================================
+# DISPLAY SCHEDULE & SUMMARY (ASAL)
+# ================================
+if "best_schedule" in st.session_state:
+    best_schedule = st.session_state.best_schedule
+    best_off_schedules = st.session_state.best_off_schedules
+
+    st.header("📋 Consolidated Staff Schedule per Department")
+
+    shift_mapping = {
+        "09:00-17:00": range(0, SHIFT_LENGTH),
+        "14:00-22:00": range(14, 14+SHIFT_LENGTH)
+    }
+
+    summary_rows = []
 
     for dept in range(n_departments):
-        n_emp = n_employees_per_dept[dept]
-        employee_ids = [f"E{i+1}" for i in range(n_emp)]
-        off_schedule = best_off_schedules[dept]
+        n_employees = n_employees_per_dept[dept]
+        employee_ids = [f"E{i+1}" for i in range(n_employees)]
+        employee_off_schedule = best_off_schedules[dept]
 
-        st.markdown(f"### 🏢 Department {dept+1}")
+        st.subheader(f"🏢 Department {dept+1}")
         rows = []
+        total_shortage = 0
         heatmap_data = np.zeros((n_days, len(shift_mapping)))
 
         for d in range(n_days):
             for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
                 assigned_emps = set()
-                shortage_total_shift = 0
                 shortage_periods = {}
+                shortage_total_shift = 0
 
                 for t in period_range:
-                    if t >= n_periods: continue
-                    assigned = [employee_ids[e] for e in range(n_emp) if best_schedule[dept,d,t,e]==1]
+                    if t >= n_periods:
+                        continue
+                    assigned = [
+                        employee_ids[e]
+                        for e in range(n_employees)
+                        if best_schedule[dept, d, t, e] == 1
+                    ]
                     assigned_emps.update(assigned)
-                    shortage = DEMAND[dept,d,t] - len(assigned)
+                    shortage = DEMAND[dept, d, t] - len(assigned)
                     if shortage > 0:
                         shortage_periods[f"P{t+1}"] = shortage
                         shortage_total_shift += shortage
 
-                off_today = [employee_ids[e] for e in range(n_emp) if off_schedule[e,d]==1]
+                off_today = [
+                    employee_ids[e]
+                    for e in range(n_employees)
+                    if employee_off_schedule[e, d] == 1
+                ]
+
+                total_shortage += shortage_total_shift
                 heatmap_data[d, idx] = shortage_total_shift
 
-                rows.append([f"Day {d+1}", shift_label, ", ".join(sorted(assigned_emps)) or "-",
-                             ", ".join(off_today) or "-", ", ".join([f"{k}({v})" for k,v in shortage_periods.items()]) or "-"])
+                rows.append([
+                    f"Day {d+1}",
+                    shift_label,
+                    ", ".join(sorted(assigned_emps)) if assigned_emps else "-",
+                    ", ".join(off_today) if off_today else "-",
+                    ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) if shortage_periods else "-"
+                ])
 
-        df_dept = pd.DataFrame(rows, columns=["Day","Shift","Employees Assigned","Employee Off","Shortage (People per Period)"])
-        st.dataframe(df_dept.style.applymap(lambda v: "background-color:red;color:white" if v!="-"
-                                            else "", subset=["Shortage (People per Period)"]),
-                     use_container_width=True)
+        df_dept = pd.DataFrame(
+            rows,
+            columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage (People per Period)"]
+        )
 
-        # Heatmap
-        st.markdown(f"🌡️ Shortage Heatmap - Dept {dept+1}")
-        fig, ax = plt.subplots(figsize=(6,3))
+        def highlight_shortage(val):
+            return "background-color: red; color: white" if val != "-" else ""
+
+        st.dataframe(
+            df_dept.style.applymap(highlight_shortage, subset=["Shortage (People per Period)"]),
+            use_container_width=True
+        )
+
+        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage} people**")
+        summary_rows.append([f"Department {dept+1}", total_shortage])
+
+        st.subheader(f"🌡️ Shortage Heatmap - Department {dept+1}")
+        fig, ax = plt.subplots(figsize=(6, 3))
         ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
         ax.set_xticks(range(len(shift_mapping)))
         ax.set_xticklabels(list(shift_mapping.keys()))
@@ -334,14 +370,9 @@ if st.sidebar.button("🚀 Run ACO"):
         ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
         for i in range(n_days):
             for j in range(len(shift_mapping)):
-                ax.text(j,i,int(heatmap_data[i,j]),ha="center",va="center")
+                ax.text(j, i, int(heatmap_data[i, j]), ha="center", va="center")
         st.pyplot(fig)
 
-    # Summary total shortage per dept
-    st.subheader("📊 Summary Total Shortage per Department")
-    summary_rows = []
-    for dept in range(n_departments):
-        total_shortage = np.sum(DEMAND[dept] - np.sum(best_schedule[dept], axis=2))
-        summary_rows.append([f"Department {dept+1}", int(total_shortage)])
-    df_summary = pd.DataFrame(summary_rows, columns=["Department","Total Shortage (People)"])
-    st.dataframe(df_summary,use_container_width=True)
+    st.header("📊 Summary of Total Shortage")
+    df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
+    st.dataframe(df_summary, use_container_width=True) 
