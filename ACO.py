@@ -2,6 +2,7 @@
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22)
 # Full version: Pareto, best schedule, fitness breakdown, table, heatmap, summary, convergence curve
+# Early stop per iteration
 # ================================
 
 import streamlit as st
@@ -154,6 +155,10 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
 
     for it in range(n_iter):
         all_scores_iter = []
+
+        iteration_best_score = float("inf")
+        iteration_best_schedule = None
+
         for _ in range(n_ants):
             schedule = np.zeros((n_departments, n_days, n_periods, max(n_employees_per_dept)))
             off_schedules = []
@@ -180,21 +185,25 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
             pareto_schedules.append(schedule.copy())
             all_scores_iter.append(score)
 
-            if score < best_score_global:
-                best_score_global = score
-                best_schedule_global = schedule.copy()
-                best_off_schedules_global = off_schedules.copy()
-                no_improve = 0
-            else:
-                no_improve += 1
+            if score < iteration_best_score:
+                iteration_best_score = score
+                iteration_best_schedule = schedule.copy()
 
             pheromone *= (1-evaporation)
             pheromone += Q/(1+score)
 
-        # Simpan convergence
+        # Update global best per iteration
+        if iteration_best_score < best_score_global:
+            best_score_global = iteration_best_score
+            best_schedule_global = iteration_best_schedule.copy()
+            best_off_schedules_global = off_schedules.copy()
+            no_improve = 0
+        else:
+            no_improve += 1
+
         fitness_history.append({
             "iteration": it+1,
-            "best": np.min(all_scores_iter),
+            "best": iteration_best_score,
             "mean": np.mean(all_scores_iter),
             "worst": np.max(all_scores_iter)
         })
@@ -270,7 +279,6 @@ if st.sidebar.button("🚀 Run ACO"):
     st.pyplot(fig)
 
     st.write(f"Algorithm stopped at iteration: {iters[-1]}")
-
 
     # ================================
     # Pareto Front
