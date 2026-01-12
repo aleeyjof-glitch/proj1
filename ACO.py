@@ -1,5 +1,5 @@
 # For ACO algorithm
-# Employee Shift Scheduling (09-17 & 14-22)
+# Employee Shift Scheduling 
 
 import streamlit as st
 import pandas as pd
@@ -18,17 +18,16 @@ n_periods = 28
 SHIFT_LENGTH = 14
 
 # Penalti
-PENALTY_SHORTAGE = 200
-PENALTY_OVERHOURS = 150
-PENALTY_DAYS_MIN = 300
-PENALTY_SHIFT_BREAK = 100
-PENALTY_NONCONSEC = 200
+PENALTY_SHORTAGE = 200 # if assigned staff < demand
+PENALTY_OVERHOURS = 150 # if workload staff hour > weekly max
+PENALTY_DAYS_MIN = 300 # if staff work < 6 day
+PENALTY_SHIFT_BREAK = 100 # if staff work < 14 period (7 hour)
+PENALTY_NONCONSEC = 200 # if staff work 14 period but not in a row
 
-# ================================
 # LOAD DEMAND
-# ================================
-DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int)
-folder_path = "./Demand/"
+
+DEMAND = np.zeros((n_departments, n_days, n_periods), dtype=int) 
+folder_path = "./Demand/" # file name is Demand
 
 st.sidebar.header("📥 Demand Files")
 for dept in range(n_departments):
@@ -36,16 +35,14 @@ for dept in range(n_departments):
     if not os.path.exists(file_path):
         st.sidebar.error(f"❌ Dept{dept+1}.xlsx not found")
         continue
-    df = pd.read_excel(file_path, header=None)
-    df_subset = df.iloc[1:1+n_days, 1:1+n_periods]
+    df = pd.read_excel(file_path, header=None) # ignore header
+    df_subset = df.iloc[1:1+n_days, 1:1+n_periods] # take 7 row of day, 28 coloumn of period
     df_subset = df_subset.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
-    DEMAND[dept] = df_subset.values
-    st.sidebar.success(f"✅ Dept{dept+1} loaded")
+    DEMAND[dept] = df_subset.values # store demand in dept
 
-# ================================
-# HELPER FUNCTIONS
-# ================================
-def longest_consecutive_ones(arr):
+# HELPER FUNCTIONS 
+
+def longest_consecutive_ones(arr): #to check shift breack / consequtive
     max_len = curr = 0
     for v in arr:
         if v == 1:
@@ -55,14 +52,14 @@ def longest_consecutive_ones(arr):
             curr = 0
     return max_len
 
-def pareto_filter(points):
+def pareto_filter(points): # take non-dominont solution only
     pareto = []
     for p in points:
         if not any((q[0] <= p[0] and q[1] <= p[1]) and q != p for q in points):
             pareto.append(p)
     return pareto
 
-def compute_penalty_breakdown(schedule, demand, max_hours):
+def compute_penalty_breakdown(schedule, demand, max_hours): # total up all constraint penalty
     total_shortage = 0
     total_overwork = 0
     total_days_min = 0
@@ -77,25 +74,25 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
                 assigned = np.sum(schedule[dept,d,t,:])
                 required = demand[dept,d,t]
                 if assigned < required:
-                    total_shortage += (required - assigned) * PENALTY_SHORTAGE
+                    total_shortage += (required - assigned) * PENALTY_SHORTAGE # 200
 
         for e in range(employees):
             total_hours = np.sum(schedule[:, :, :, e])
             if total_hours > max_hours:
-                total_overwork += (total_hours - max_hours) * PENALTY_OVERHOURS
+                total_overwork += (total_hours - max_hours) * PENALTY_OVERHOURS # 150
 
             days_worked = np.sum(np.sum(schedule[:, :, :, e], axis=2) > 0)
             if days_worked < (n_days - 1):
-                total_days_min += PENALTY_DAYS_MIN
+                total_days_min += PENALTY_DAYS_MIN # 300
 
         for d in range(days):
             for e in range(employees):
                 daily = schedule[dept,d,:,e]
                 worked = np.sum(daily)
-                if worked > 0 and worked != SHIFT_LENGTH:
-                    total_shift_break += PENALTY_SHIFT_BREAK
+                if worked > 0 and worked != SHIFT_LENGTH: 
+                    total_shift_break += PENALTY_SHIFT_BREAK #100
                 if worked == SHIFT_LENGTH and longest_consecutive_ones(daily) < SHIFT_LENGTH:
-                    total_nonconsec += PENALTY_NONCONSEC
+                    total_nonconsec += PENALTY_NONCONSEC #200
 
     total_fitness = total_shortage + total_overwork + total_days_min + total_shift_break + total_nonconsec
     return {
@@ -107,6 +104,7 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
         "nonconsec": total_nonconsec
     }
 
+# for pareto 
 def compute_objectives(schedule, demand, max_hours):
     total_shortage = 0
     workload_penalty = 0
@@ -121,38 +119,40 @@ def compute_objectives(schedule, demand, max_hours):
                 workload_penalty += (total_hours - max_hours)
     return total_shortage, workload_penalty
 
+# for single objective
 def fitness(schedule, demand, max_hours):
     return compute_penalty_breakdown(schedule,demand,max_hours)["total_fitness"]
 
+# for all staff to at least have 1 day off (6 day work)
 def generate_min_one_off_schedule(n_employees, n_days):
     off = np.zeros((n_employees, n_days), dtype=int)
     for e in range(n_employees):
         off[e, random.randint(0,n_days-1)] = 1
     return off
 
-# ================================
+
 # ACO SCHEDULER
-# ================================
+
 def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
                   alpha, evaporation, Q, max_hours, early_stop):
 
-    pheromone = np.ones((n_departments, n_days, 2, max(n_employees_per_dept)))
-    fitness_history = []
-    pareto_raw = []
-    pareto_schedules = []
-    best_score_global = float("inf")
-    best_schedule_global = None
-    best_off_schedules_global = None
-    no_improve = 0
-    start_time = time.time()
+    pheromone = np.ones((n_departments, n_days, 2, max(n_employees_per_dept))) # pheromone memory 
+    fitness_history = [] # to plot convergence graph
+    pareto_raw = [] # to store all pareto pair (total_shortage, workload_penalty)
+    pareto_schedules = [] # store original schedule for each Pareto plot
+    best_score_global = float("inf") # store best fitness in all iteration for early stop and convergence
+    best_schedule_global = None # store best schedule with lowest fitness - not necessarily pareto-optimal
+    best_off_schedules_global = None # store off schedule related
+    no_improve = 0 # count for early stopping
+    start_time = time.time() # to compute run time
 
-    for it in range(n_iter):
+    for it in range(n_iter):  # for each iteration
         all_scores_iter = []
 
         iteration_best_score = float("inf")
         iteration_best_schedule = None
 
-        for _ in range(n_ants):
+        for _ in range(n_ants): # for each ant
             schedule = np.zeros((n_departments, n_days, n_periods, max(n_employees_per_dept)))
             off_schedules = []
 
@@ -224,28 +224,27 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
     run_time = time.time() - start_time
     return best_schedule_final, best_score_from_pareto, fitness_history, pareto_filtered, run_time, best_off_final, best_index
 
-# ================================
 # STREAMLIT CONTROLS
-# ================================
-st.sidebar.header("⚙️ ACO Parameters")
-n_ants = st.sidebar.slider("Ants", 5,50,20)
-n_iter = st.sidebar.slider("Iterations", 10,200,50)
-alpha = st.sidebar.slider("Alpha", 0.1,5.0,1.0)
-evaporation = st.sidebar.slider("Evaporation",0.01,0.9,0.3)
-Q = st.sidebar.slider("Q",1,100,50)
-max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
-early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
-REST_PROB = st.sidebar.slider("Rest Probability (REST_PROB)",0.0, 0.8, 0.35, step=0.05)
 
-st.sidebar.header("👥 Employees per Department")
+st.sidebar.header("ACO Parameters")
+n_ants = st.sidebar.slider("Ants", 5,50,20)
+n_iter = st.sidebar.slider("Iterations", 10,500,50)
+early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
+alpha = st.sidebar.slider("Alpha", 0.1,5.0,1.0) # show how much trust to previous experience
+evaporation = st.sidebar.slider("Evaporation",0.01,0.9,0.3)
+Q = st.sidebar.slider("Q",1,100,50) # show how much appreciate good solution
+REST_PROB = st.sidebar.slider("Rest Probability (REST_PROB)",0.0, 0.8, 0.35, step=0.05)
+max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
+
+# for future admin to define
+st.sidebar.header("Employees per Department")
 n_employees_per_dept = [
     st.sidebar.number_input(f"Dept {i+1} Employees",1,50,20) for i in range(n_departments)
 ]
 
-# ================================
 # RUN ACO
-# ================================
-if st.sidebar.button("🚀 Run ACO"):
+
+if st.sidebar.button("Run ACO"):
     best_schedule, best_score, fitness_history, pareto_data, run_time, best_off_schedules, best_idx = \
         ACO_scheduler(DEMAND, n_employees_per_dept, n_ants, n_iter,
                       alpha, evaporation, Q, max_hours, early_stop)
@@ -256,15 +255,14 @@ if st.sidebar.button("🚀 Run ACO"):
     st.success(f"Best Fitness Score (from Pareto): {best_score:.2f}")
     st.info(f"Computation Time: {run_time:.2f} seconds")
 
-    # ================================
-    # Fitness Convergence - Single Line
-    # ================================
+    # Fitness Convergence 
+    
     iters = [int(x["iteration"]) for x in fitness_history]
     best = [x["best"] for x in fitness_history]
 
     fig, ax = plt.subplots()
-    ax.plot(iters, best, marker='o', color='blue', label="Best Fitness")
-    ax.axvline(iters[-1], color='red', linestyle='--', label="Stop Iteration")  # highlight last iteration
+    ax.plot(iters, best, marker='o', color='blue', label="Best Fitness") # best fitness for the iteration
+    ax.axvline(iters[-1], color='red', linestyle='--', label="Stop Iteration")  # highlight last iteration after early stop or max iteration
     ax.set_xticks(iters)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Fitness")
@@ -272,15 +270,16 @@ if st.sidebar.button("🚀 Run ACO"):
     ax.legend()
     st.pyplot(fig)
 
-    st.write(f"Algorithm stopped at iteration: {iters[-1]}")
+    st.write(f"Algorithm stopped at iteration: {iters[-1]}") 
 
-    # ================================
     # Pareto Front
-    # ================================
-    st.subheader("🎯 Pareto Front")
+
+    st.subheader("Pareto Front") # show the non-dominont solution in all iteration
     p = np.array(pareto_data)
     fig, ax = plt.subplots()
     ax.scatter(p[:,0], p[:,1], alpha=0.6, label="Pareto points")
+
+    # choose best schedule among the non-dominont solutions
     if best_idx is not None:
         selected = p[best_idx]
         ax.scatter(selected[0], selected[1], color='red', s=100, label="Chosen Best Schedule")
@@ -289,17 +288,15 @@ if st.sidebar.button("🚀 Run ACO"):
     ax.legend()
     st.pyplot(fig)
 
-    # ================================
     # Fitness Breakdown
-    # ================================
-    st.subheader("📊 Fitness Breakdown (Best Schedule)")
+
+    st.subheader("Fitness Breakdown")
     breakdown = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
     st.json(breakdown)
 
-    # ================================
     # DISPLAY SCHEDULE + HEATMAP PER DEPARTMENT
-    # ================================
-    st.subheader("📋 Department Schedule & Heatmap")
+
+    st.subheader("Department Schedule & Heatmap")
     shift_mapping = {"09:00-17:00": range(0, SHIFT_LENGTH),
                      "14:00-22:00": range(14, 14+SHIFT_LENGTH)}
 
@@ -309,7 +306,7 @@ if st.sidebar.button("🚀 Run ACO"):
         employee_ids = [f"E{i+1}" for i in range(n_emp)]
         off_schedule = best_off_schedules[dept]
 
-        st.markdown(f"### 🏢 Department {dept+1}")
+        st.markdown(f"### Department {dept+1}")
         rows = []
         heatmap_data = np.zeros((n_days, len(shift_mapping)))
         total_shortage_dept = 0
@@ -347,7 +344,7 @@ if st.sidebar.button("🚀 Run ACO"):
         summary_rows.append([f"Department {dept+1}", total_shortage_dept])
 
         # Heatmap
-        st.markdown(f"🌡️ Shortage Heatmap - Dept {dept+1}")
+        st.markdown(f"Shortage Heatmap - Dept {dept+1}")
         fig, ax = plt.subplots(figsize=(6,3))
         ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
         ax.set_xticks(range(len(shift_mapping)))
@@ -362,6 +359,6 @@ if st.sidebar.button("🚀 Run ACO"):
     # ================================
     # Summary Total Shortage per Department
     # ================================
-    st.subheader("📊 Summary Total Shortage per Department")
+    st.subheader("Summary Total Shortage per Department")
     df_summary = pd.DataFrame(summary_rows, columns=["Department","Total Shortage (People)"])
     st.dataframe(df_summary,use_container_width=True)
