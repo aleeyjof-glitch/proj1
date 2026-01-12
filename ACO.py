@@ -61,6 +61,18 @@ def longest_consecutive_ones(arr):
             curr = 0
     return max_len
 
+def pareto_filter(points):
+    pareto = []
+    for p in points:
+        dominated = False
+        for q in points:
+            if (q[0] <= p[0] and q[1] <= p[1]) and q != p:
+                dominated = True
+                break
+        if not dominated:
+            pareto.append(p)
+    return pareto
+
 # ================================
 # FITNESS FUNCTION
 # ================================
@@ -138,21 +150,23 @@ def generate_min_one_off_schedule(n_employees, n_days):
 # ================================
 # ACO ALGORITHM
 # ================================
-def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporation, Q, max_hours, early_stop=10):
+def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
+                  alpha, evaporation, Q, max_hours, early_stop=10):
+
     n_departments, days, periods = demand.shape
     max_employees = max(n_employees_per_dept)
-    pheromone = np.ones((n_departments, days, periods, max_employees))
+
+    pheromone = np.ones((n_departments, days, 2, max_employees))  # 2 shifts only
 
     best_schedule = None
     best_score = float("inf")
-    no_improve_count = 0
     fitness_history = []
     pareto_data = []
-    best_off_schedules = []
 
+    no_improve = 0
     start_time = time.time()
 
-    for iter_num in range(n_iter):
+    for it in range(n_iter):
         solutions = []
         scores = []
 
@@ -161,55 +175,67 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
             off_schedules = []
 
             for dept in range(n_departments):
-                n_employees = n_employees_per_dept[dept]
+                n_emp = n_employees_per_dept[dept]
+                off = generate_min_one_off_schedule(n_emp, n_days)
+                off_schedules.append(off)
 
-                # Generate min 1 off-day per employee
-                employee_off_schedule = generate_min_one_off_schedule(n_employees, n_days)
-                off_schedules.append(employee_off_schedule)
-
-                # Assign shifts only if employee is not off
                 for d in range(n_days):
-                    available_emps = [e for e in range(n_employees) if employee_off_schedule[e, d] == 0]
-                    random.shuffle(available_emps)
-                    half = len(available_emps) // 2
-                    shift1_emps = available_emps[:half]
-                    shift2_emps = available_emps[half:]
+                    for e in range(n_emp):
+                        if off[e, d] == 1:
+                            continue
 
-                    for e in shift1_emps:
-                        schedule[dept, d, 0:SHIFT_LENGTH, e] = 1
-                    for e in shift2_emps:
-                        schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
+                        # pheromone-based probabilistic shift choice
+                        tau_morning = pheromone[dept, d, 0, e] ** alpha
+                        tau_evening = pheromone[dept, d, 1, e] ** alpha
+                        prob_morning = tau_morning / (tau_morning + tau_evening + 1e-6)
+
+                        if random.random() < prob_morning:
+                            schedule[dept, d, 0:SHIFT_LENGTH, e] = 1
+                        else:
+                            schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
 
             score = fitness(schedule, demand, max_hours)
             solutions.append(schedule)
             scores.append(score)
 
-            # Multi-objective
-            total_shortage, workload_penalty = compute_objectives(schedule, demand, max_hours)
-            pareto_data.append((total_shortage, workload_penalty))
+            shortage, workload = compute_objectives(schedule, demand, max_hours)
+            pareto_data.append((shortage, workload))
 
             if score < best_score:
                 best_score = score
                 best_schedule = schedule.copy()
                 best_off_schedules = off_schedules.copy()
-                no_improve_count = 0
+                no_improve = 0
             else:
-                no_improve_count += 1
+                no_improve += 1
 
-        iteration_best = min(scores)
-        fitness_history.append(iteration_best)
+        # global best tracking
+        fitness_history.append(best_score)
 
-        # Update pheromone
+        # pheromone evaporation
         pheromone *= (1 - evaporation)
-        for sol, sc in zip(solutions, scores):
-            pheromone += (Q / (1 + sc)) * sol
 
-        if no_improve_count >= early_stop:
-            print(f"Early stopping at iteration {iter_num+1}, best score: {best_score}")
+        # pheromone update (elitist)
+        for sol, sc in zip(solutions, scores):
+            deposit = Q / (1 + sc)
+            for dept in range(n_departments):
+                for d in range(n_days):
+                    for e in range(n_employees_per_dept[dept]):
+                        if np.sum(sol[dept, d, 0:SHIFT_LENGTH, e]) > 0:
+                            pheromone[dept, d, 0, e] += deposit
+                        if np.sum(sol[dept, d, 14:14+SHIFT_LENGTH, e]) > 0:
+                            pheromone[dept, d, 1, e] += deposit
+
+        if no_improve >= early_stop:
             break
 
     run_time = time.time() - start_time
-    return best_schedule, best_score, fitness_history, pareto_data, run_time, best_off_schedules
+
+    pareto_front = pareto_filter(pareto_data)
+
+    return (best_schedule, best_score,
+            fitness_history, pareto_front,
+            run_time, best_off_schedules)
 
 # ================================
 # STREAMLIT CONTROLS
@@ -268,9 +294,11 @@ if st.sidebar.button("🚀 Run ACO"):
 
         # Pareto Front
         st.subheader("🎯 Pareto Front: Shortage vs Workload Penalty")
+
         pareto_array = np.array(pareto_data)
+
         fig, ax = plt.subplots()
-        ax.scatter(pareto_array[:, 0], pareto_array[:, 1], c='blue', alpha=0.6)
+        ax.scatter(pareto_array[:, 0], pareto_array[:, 1], alpha=0.6)
         ax.set_xlabel("Total Shortage")
         ax.set_ylabel("Workload Penalty (Hours over max)")
         ax.set_title("Pareto Front")
