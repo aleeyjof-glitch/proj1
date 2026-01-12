@@ -256,12 +256,13 @@ if st.sidebar.button("🚀 Run ACO"):
     # ================================
     # Fitness Convergence - Single Line
     # ================================
-    iters = [x["iteration"] for x in fitness_history]
+    iters = [int(x["iteration"]) for x in fitness_history]
     best = [x["best"] for x in fitness_history]
 
     fig, ax = plt.subplots()
     ax.plot(iters, best, marker='o', color='blue', label="Best Fitness")
     ax.axvline(iters[-1], color='red', linestyle='--', label="Stop Iteration")  # highlight last iteration
+    ax.set_xticks(iters)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Fitness")
     ax.set_title("Fitness Convergence (Best Fitness)")
