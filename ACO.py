@@ -1,7 +1,7 @@
 # ================================
 # ACO.py
 # Employee Shift Scheduling (09-17 & 14-22)
-# Full version: Pareto, best schedule, fitness breakdown, table, heatmap, summary
+# Full version: Pareto, best schedule, fitness breakdown, table, heatmap, summary, convergence curve
 # ================================
 
 import streamlit as st
@@ -69,7 +69,6 @@ def pareto_filter(points):
     return pareto
 
 def compute_penalty_breakdown(schedule, demand, max_hours):
-    """Return detailed penalties"""
     total_shortage = 0
     total_overwork = 0
     total_days_min = 0
@@ -81,8 +80,8 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
     for dept in range(n_departments):
         for d in range(days):
             for t in range(periods):
-                assigned = np.sum(schedule[dept, d, t, :])
-                required = demand[dept, d, t]
+                assigned = np.sum(schedule[dept,d,t,:])
+                required = demand[dept,d,t]
                 if assigned < required:
                     total_shortage += (required - assigned) * PENALTY_SHORTAGE
 
@@ -97,7 +96,7 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
 
         for d in range(days):
             for e in range(employees):
-                daily = schedule[dept, d, :, e]
+                daily = schedule[dept,d,:,e]
                 worked = np.sum(daily)
                 if worked > 0 and worked != SHIFT_LENGTH:
                     total_shift_break += PENALTY_SHIFT_BREAK
@@ -114,9 +113,6 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
         "nonconsec": total_nonconsec
     }
 
-# ================================
-# MULTI-OBJECTIVE
-# ================================
 def compute_objectives(schedule, demand, max_hours):
     total_shortage = 0
     workload_penalty = 0
@@ -124,20 +120,20 @@ def compute_objectives(schedule, demand, max_hours):
     for dept in range(n_departments):
         for d in range(days):
             for t in range(periods):
-                total_shortage += max(demand[dept, d, t] - np.sum(schedule[dept, d, t]), 0)
+                total_shortage += max(demand[dept,d,t] - np.sum(schedule[dept,d,t]), 0)
         for e in range(employees):
-            total_hours = np.sum(schedule[:, :, :, e])
+            total_hours = np.sum(schedule[:,:,:,e])
             if total_hours > max_hours:
                 workload_penalty += (total_hours - max_hours)
     return total_shortage, workload_penalty
 
 def fitness(schedule, demand, max_hours):
-    return compute_penalty_breakdown(schedule, demand, max_hours)["total_fitness"]
+    return compute_penalty_breakdown(schedule,demand,max_hours)["total_fitness"]
 
 def generate_min_one_off_schedule(n_employees, n_days):
     off = np.zeros((n_employees, n_days), dtype=int)
     for e in range(n_employees):
-        off[e, random.randint(0, n_days - 1)] = 1
+        off[e, random.randint(0,n_days-1)] = 1
     return off
 
 # ================================
@@ -168,19 +164,19 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
                 off_schedules.append(off)
                 for d in range(n_days):
                     for e in range(n_emp):
-                        if off[e, d] == 1 or random.random() < REST_PROB:
+                        if off[e,d]==1 or random.random()<REST_PROB:
                             continue
-                        tau_m = pheromone[dept, d, 0, e] ** alpha
-                        tau_e = pheromone[dept, d, 1, e] ** alpha
-                        p_m = tau_m / (tau_m + tau_e + 1e-6)
+                        tau_m = pheromone[dept,d,0,e]**alpha
+                        tau_e = pheromone[dept,d,1,e]**alpha
+                        p_m = tau_m/(tau_m + tau_e + 1e-6)
                         if random.random() < p_m:
-                            schedule[dept, d, 0:SHIFT_LENGTH, e] = 1
+                            schedule[dept,d,0:SHIFT_LENGTH,e] = 1
                         else:
-                            schedule[dept, d, 14:14+SHIFT_LENGTH, e] = 1
+                            schedule[dept,d,14:14+SHIFT_LENGTH,e] = 1
 
             score = fitness(schedule, demand, max_hours)
             s, w = compute_objectives(schedule, demand, max_hours)
-            pareto_raw.append((s, w))
+            pareto_raw.append((s,w))
             pareto_schedules.append(schedule.copy())
             all_scores_iter.append(score)
 
@@ -192,18 +188,25 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
             else:
                 no_improve += 1
 
-            pheromone *= (1 - evaporation)
-            pheromone += Q / (1 + score)
+            pheromone *= (1-evaporation)
+            pheromone += Q/(1+score)
 
-        fitness_history.append(np.min(all_scores_iter))
+        # Simpan convergence
+        fitness_history.append({
+            "iteration": it+1,
+            "best": np.min(all_scores_iter),
+            "mean": np.mean(all_scores_iter),
+            "worst": np.max(all_scores_iter)
+        })
+
         if no_improve >= early_stop:
             break
 
     # Pareto filter
     pareto_filtered = pareto_filter(pareto_raw)
-    filtered_schedules = [pareto_schedules[i] for i, p in enumerate(pareto_raw) if p in pareto_filtered]
+    filtered_schedules = [pareto_schedules[i] for i,p in enumerate(pareto_raw) if p in pareto_filtered]
 
-    # Best schedule dari Pareto berdasarkan fitness
+    # Pilih best dari Pareto
     best_score_from_pareto = float("inf")
     best_schedule_final = None
     best_off_final = None
@@ -223,18 +226,17 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
 # STREAMLIT CONTROLS
 # ================================
 st.sidebar.header("⚙️ ACO Parameters")
-n_ants = st.sidebar.slider("Ants", 5, 50, 20)
-n_iter = st.sidebar.slider("Iterations", 10, 200, 50)
-alpha = st.sidebar.slider("Alpha", 0.1, 5.0, 1.0)
-evaporation = st.sidebar.slider("Evaporation", 0.01, 0.9, 0.3)
-Q = st.sidebar.slider("Q", 1, 100, 50)
-max_hours = st.sidebar.slider("Max Hours / Week", 20, 60, 40)
-early_stop = st.sidebar.slider("Early Stop Iterations", 1, 50, 10)
+n_ants = st.sidebar.slider("Ants", 5,50,20)
+n_iter = st.sidebar.slider("Iterations", 10,200,50)
+alpha = st.sidebar.slider("Alpha", 0.1,5.0,1.0)
+evaporation = st.sidebar.slider("Evaporation",0.01,0.9,0.3)
+Q = st.sidebar.slider("Q",1,100,50)
+max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
+early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
 
 st.sidebar.header("👥 Employees per Department")
 n_employees_per_dept = [
-    st.sidebar.number_input(f"Dept {i+1} Employees", 1, 50, 20)
-    for i in range(n_departments)
+    st.sidebar.number_input(f"Dept {i+1} Employees",1,50,20) for i in range(n_departments)
 ]
 
 # ================================
@@ -255,10 +257,18 @@ if st.sidebar.button("🚀 Run ACO"):
     # Fitness Convergence
     # ================================
     st.subheader("📈 Fitness Convergence")
+    iters = [x["iteration"] for x in fitness_history]
+    best = [x["best"] for x in fitness_history]
+    mean = [x["mean"] for x in fitness_history]
+    worst = [x["worst"] for x in fitness_history]
+
     fig, ax = plt.subplots()
-    ax.plot(fitness_history, marker='o')
+    ax.plot(iters, best, marker='o', label="Best")
+    ax.plot(iters, mean, marker='x', label="Mean")
+    ax.plot(iters, worst, marker='.', label="Worst")
     ax.set_xlabel("Iteration")
-    ax.set_ylabel("Best Fitness per Iteration")
+    ax.set_ylabel("Fitness")
+    ax.legend()
     st.pyplot(fig)
 
     # ================================
