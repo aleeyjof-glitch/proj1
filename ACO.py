@@ -365,9 +365,7 @@ if st.sidebar.button("Run ACO"):
                 ax.text(j,i,int(heatmap_data[i,j]),ha="center",va="center")
         st.pyplot(fig)
 
-    # ================================
     # Summary Total Shortage per Department
-    # ================================
     st.subheader("Summary Total Shortage per Department")
     df_summary = pd.DataFrame(summary_rows, columns=["Department","Total Shortage (People)"])
     st.dataframe(df_summary,use_container_width=True)
