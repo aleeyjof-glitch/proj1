@@ -280,6 +280,28 @@ if st.sidebar.button("Run ACO"):
     st.write(f"Algorithm stopped at iteration: {iters[-1]}")
     st.write(f"Overall Best Fitness: {min_fitness} at iteration {iters[min_index]}")
 
+    st.subheader("🎯 Constraint Balance (Radar Chart)")
+       bd = compute_penalty_breakdown(best_sched, DEMAND, max_hours)
+    
+       cats = ['Shortage', 'Overwork', 'Min Days', 'Shift Break', 'Consecutive']
+       vals = [bd['shortage'], bd['overwork'], bd['days_min'], bd['shift_break'], bd['nonconsec']]
+    
+       # Normalize for visuals? Raw values are okay if similar magnitude.
+       #  If one is huge (e.g. 5000), it dwarfs others. Let's use Log scale or Raw. Sticking to Raw for honesty.
+    
+       # Radar Setup
+       N = len(cats)
+       angles = [n / float(N) * 2 * np.pi for n in range(N)]
+       angles += angles[:1]
+       vals += vals[:1]
+    
+       fig_radar, ax_radar = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+       ax_radar.plot(angles, vals, linewidth=2, linestyle='solid', color='#E63946')
+       ax_radar.fill(angles, vals, '#E63946', alpha=0.25)
+       ax_radar.set_xticks(angles[:-1])
+       ax_radar.set_xticklabels(cats)
+       ax_radar.set_title("Penalty Distribution (Smaller shape is better)")
+       st.pyplot(fig_radar)
 
     # Pareto Front
 
@@ -306,8 +328,8 @@ if st.sidebar.button("Run ACO"):
     # DISPLAY SCHEDULE + HEATMAP PER DEPARTMENT
 
     st.subheader("Department Schedule & Heatmap")
-    shift_mapping = {"09:00-17:00": range(0, SHIFT_LENGTH),
-                     "14:00-22:00": range(14, 14+SHIFT_LENGTH)}
+    shift_mapping = {"08:00-15:00": range(0, SHIFT_LENGTH),
+                     "15:00-22:00": range(14, 14+SHIFT_LENGTH)}
 
     summary_rows = []
     for dept in range(n_departments):
