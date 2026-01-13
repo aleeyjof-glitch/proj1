@@ -1,5 +1,5 @@
 # ================================
-# ACO Algorithm for Employee Shift Scheduling
+# ACO Employee Shift Scheduling
 # ================================
 
 import streamlit as st
@@ -13,21 +13,19 @@ import matplotlib.pyplot as plt
 # ================================
 # CONFIG
 # ================================
-st.title("Employee Shift Scheduling (ACO) 🐜")
+st.title("🐜 Employee Shift Scheduling (ACO)")
 
 n_departments = 6
 n_days = 7
 n_periods = 28
 SHIFT_LENGTH = 14
 
-# ================================
-# PENALTIES
-# ================================
-PENALTY_SHORTAGE = 200       # if assigned staff < demand
-PENALTY_OVERHOURS = 150      # if workload staff hour > weekly max
-PENALTY_DAYS_MIN = 300       # if staff work < 6 days
-PENALTY_SHIFT_BREAK = 100    # if staff work < 14 periods (7 hours)
-PENALTY_NONCONSEC = 200      # if staff work 14 periods but not consecutive
+# Penalti
+PENALTY_SHORTAGE = 200
+PENALTY_OVERHOURS = 150
+PENALTY_DAYS_MIN = 300
+PENALTY_SHIFT_BREAK = 100
+PENALTY_NONCONSEC = 200
 
 # ================================
 # LOAD DEMAND
@@ -106,7 +104,8 @@ def compute_penalty_breakdown(schedule, demand, max_hours):
     }
 
 def compute_objectives(schedule, demand, max_hours):
-    total_shortage = workload_penalty = 0
+    total_shortage = 0
+    workload_penalty = 0
     n_departments, days, periods, employees = schedule.shape
     for dept in range(n_departments):
         for d in range(days):
@@ -119,7 +118,7 @@ def compute_objectives(schedule, demand, max_hours):
     return total_shortage, workload_penalty
 
 def fitness(schedule, demand, max_hours):
-    return compute_penalty_breakdown(schedule, demand, max_hours)["total_fitness"]
+    return compute_penalty_breakdown(schedule,demand,max_hours)["total_fitness"]
 
 def generate_min_one_off_schedule(n_employees, n_days):
     off = np.zeros((n_employees, n_days), dtype=int)
@@ -130,7 +129,8 @@ def generate_min_one_off_schedule(n_employees, n_days):
 # ================================
 # ACO Scheduler
 # ================================
-def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporation, Q, max_hours, early_stop, REST_PROB):
+def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter,
+                  alpha, evaporation, Q, max_hours, early_stop, REST_PROB=0.35):
 
     pheromone = np.ones((n_departments, n_days, 2, max(n_employees_per_dept)))
     fitness_history = []
@@ -155,9 +155,10 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
                 n_emp = n_employees_per_dept[dept]
                 off = generate_min_one_off_schedule(n_emp, n_days)
                 off_schedules.append(off)
+
                 for d in range(n_days):
                     for e in range(n_emp):
-                        if off[e,d] == 1 or random.random() < REST_PROB:
+                        if off[e,d]==1 or random.random()<REST_PROB:
                             continue
                         tau_m = pheromone[dept,d,0,e]**alpha
                         tau_e = pheromone[dept,d,1,e]**alpha
@@ -205,6 +206,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     best_schedule_final = None
     best_off_final = None
     best_index = None
+
     for idx, sched in enumerate(filtered_schedules):
         score = fitness(sched, demand, max_hours)
         if score < best_score_from_pareto:
@@ -217,7 +219,7 @@ def ACO_scheduler(demand, n_employees_per_dept, n_ants, n_iter, alpha, evaporati
     return best_schedule_final, best_score_from_pareto, fitness_history, pareto_filtered, run_time, best_off_final, best_index
 
 # ================================
-# STREAMLIT SIDEBAR CONTROLS
+# STREAMLIT CONTROLS
 # ================================
 st.sidebar.header("ACO Parameters")
 n_ants = st.sidebar.slider("Ants", 5,50,20)
@@ -226,16 +228,18 @@ early_stop = st.sidebar.slider("Early Stop Iterations",1,50,10)
 alpha = st.sidebar.slider("Alpha", 0.1,5.0,1.0)
 evaporation = st.sidebar.slider("Evaporation",0.01,0.9,0.3)
 Q = st.sidebar.slider("Q",1,100,50)
-REST_PROB = st.sidebar.slider("Rest Probability (REST_PROB)",0.0,0.8,0.35, step=0.05)
+REST_PROB = st.sidebar.slider("Rest Probability (REST_PROB)",0.0, 0.8, 0.35, step=0.05)
 max_hours = st.sidebar.slider("Max Hours / Week",20,60,40)
 
 st.sidebar.header("Employees per Department")
-n_employees_per_dept = [st.sidebar.number_input(f"Dept {i+1} Employees",1,50,20) for i in range(n_departments)]
+n_employees_per_dept = [
+    st.sidebar.number_input(f"Dept {i+1} Employees",1,50,20) for i in range(n_departments)
+]
 
 # ================================
 # RUN ACO
 # ================================
-if st.sidebar.button("Run ACO"):
+if st.sidebar.button("🚀 Run ACO"):
     best_schedule, best_score, fitness_history, pareto_data, run_time, best_off_schedules, best_idx = \
         ACO_scheduler(DEMAND, n_employees_per_dept, n_ants, n_iter,
                       alpha, evaporation, Q, max_hours, early_stop, REST_PROB)
@@ -247,9 +251,9 @@ if st.sidebar.button("Run ACO"):
     st.info(f"Computation Time: {run_time:.2f} seconds")
 
     # ================================
-    # Fitness Convergence
+    # Fitness Convergence Plot
     # ================================
-    iters = [int(x["iteration"]) for x in fitness_history]
+    iters = [x["iteration"] for x in fitness_history]
     best = [x["best"] for x in fitness_history]
 
     fig, ax = plt.subplots()
@@ -267,124 +271,114 @@ if st.sidebar.button("Run ACO"):
 
     st.write(f"Algorithm stopped at iteration: {iters[-1]}")
     st.write(f"Overall Best Fitness: {min_fitness} at iteration {iters[min_index]}")
-    
-# ================================
-# Radar Chart - Constraint Balance
-# ================================
-st.subheader("🎯 Constraint Balance (Radar Chart)")
-bd = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
 
-cats = ['Shortage', 'Overwork', 'Min Days', 'Shift Break', 'Consecutive']
-vals = [bd['shortage'], bd['overwork'], bd['days_min'], bd['shift_break'], bd['nonconsec']]
+    # ================================
+    # Radar Chart
+    # ================================
+    st.subheader("🎯 Constraint Balance (Radar Chart)")
+    bd = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
+    cats = ['Shortage', 'Overwork', 'Min Days', 'Shift Break', 'Consecutive']
+    vals = [bd['shortage'], bd['overwork'], bd['days_min'], bd['shift_break'], bd['nonconsec']]
+    N = len(cats)
+    angles = [n / float(N) * 2 * np.pi for n in range(N)]
+    angles += angles[:1]
+    vals += vals[:1]
 
-# Radar Setup
-N = len(cats)
-angles = [n / float(N) * 2 * np.pi for n in range(N)]
-angles += angles[:1]
-vals += vals[:1]
+    fig_radar, ax_radar = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
+    ax_radar.plot(angles, vals, linewidth=2, linestyle='solid', color='#E63946')
+    ax_radar.fill(angles, vals, '#E63946', alpha=0.25)
+    ax_radar.set_xticks(angles[:-1])
+    ax_radar.set_xticklabels(cats)
+    ax_radar.set_title("Penalty Distribution (Smaller shape is better)")
+    st.pyplot(fig_radar)
 
-fig_radar, ax_radar = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-ax_radar.plot(angles, vals, linewidth=2, linestyle='solid', color='#E63946')
-ax_radar.fill(angles, vals, '#E63946', alpha=0.25)
-ax_radar.set_xticks(angles[:-1])
-ax_radar.set_xticklabels(cats)
-ax_radar.set_title("Penalty Distribution (Smaller shape is better)")
-st.pyplot(fig_radar)
-
-# ================================
-# Pareto Front
-# ================================
-st.subheader("Pareto Front")  # show the non-dominant solution in all iteration
-p = np.array(pareto_data)
-fig, ax = plt.subplots()
-ax.scatter(p[:, 0], p[:, 1], alpha=0.6, label="Pareto points")
-
-# choose best schedule among the non-dominant solutions
-if best_idx is not None:
-    selected = p[best_idx]
-    ax.scatter(selected[0], selected[1], color='red', s=100, label="Chosen Best Schedule")
-
-ax.set_xlabel("Total Shortage")
-ax.set_ylabel("Workload Penalty")
-ax.legend()
-st.pyplot(fig)
-
-# ================================
-# Fitness Breakdown
-# ================================
-st.subheader("Fitness Breakdown")
-breakdown = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
-st.json(breakdown)
-
-# ================================
-# DISPLAY SCHEDULE + HEATMAP PER DEPARTMENT
-# ================================
-st.subheader("Department Schedule & Heatmap")
-shift_mapping = {"08:00-15:00": range(0, SHIFT_LENGTH),
-                 "15:00-22:00": range(14, 14+SHIFT_LENGTH)}
-
-summary_rows = []
-for dept in range(n_departments):
-    n_emp = n_employees_per_dept[dept]
-    employee_ids = [f"E{i+1}" for i in range(n_emp)]
-    off_schedule = best_off_schedules[dept]
-
-    st.markdown(f"### Department {dept+1}")
-    rows = []
-    heatmap_data = np.zeros((n_days, len(shift_mapping)))
-    total_shortage_dept = 0
-
-    for d in range(n_days):
-        for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
-            assigned_emps = set()
-            shortage_total_shift = 0
-            shortage_periods = {}
-
-            for t in period_range:
-                if t >= n_periods:
-                    continue
-                assigned = [employee_ids[e] for e in range(n_emp) if best_schedule[dept, d, t, e] == 1]
-                assigned_emps.update(assigned)
-                shortage = DEMAND[dept, d, t] - len(assigned)
-                if shortage > 0:
-                    shortage_periods[f"P{t+1}"] = shortage
-                    shortage_total_shift += shortage
-
-            off_today = [employee_ids[e] for e in range(n_emp) if off_schedule[e, d] == 1]
-            heatmap_data[d, idx] = shortage_total_shift
-            total_shortage_dept += shortage_total_shift
-
-            rows.append([
-                f"Day {d+1}", shift_label,
-                ", ".join(sorted(assigned_emps)) or "-",
-                ", ".join(off_today) or "-",
-                ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) or "-"
-            ])
-
-    df_dept = pd.DataFrame(rows, columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage (People per Period)"])
-    st.dataframe(df_dept.style.applymap(
-        lambda v: "background-color:red;color:white" if v != "-" else "",
-        subset=["Shortage (People per Period)"]),
-        use_container_width=True
-    )
-
-    st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage_dept} people**")
-    summary_rows.append([f"Department {dept+1}", total_shortage_dept])
-
-    # Heatmap
-    st.markdown(f"Shortage Heatmap - Dept {dept+1}")
-    fig, ax = plt.subplots(figsize=(6, 3))
-    ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
-    ax.set_xticks(range(len(shift_mapping)))
-    ax.set_xticklabels(list(shift_mapping.keys()))
-    ax.set_yticks(range(n_days))
-    ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
-    for i in range(n_days):
-        for j in range(len(shift_mapping)):
-            ax.text(j, i, int(heatmap_data[i, j]), ha="center", va="center")
+    # ================================
+    # Pareto Front
+    # ================================
+    st.subheader("Pareto Front")
+    p = np.array(pareto_data)
+    fig, ax = plt.subplots()
+    ax.scatter(p[:,0], p[:,1], alpha=0.6, label="Pareto points")
+    if best_idx is not None:
+        selected = p[best_idx]
+        ax.scatter(selected[0], selected[1], color='red', s=100, label="Chosen Best Schedule")
+    ax.set_xlabel("Total Shortage")
+    ax.set_ylabel("Workload Penalty")
+    ax.legend()
     st.pyplot(fig)
 
-# Summary Total Shortage per Department
-st.subheader("Summary Total Shortage per Department")
-df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
-st.dataframe(df_summary, use_container_width=True)
+    # ================================
+    # Fitness Breakdown
+    # ================================
+    st.subheader("Fitness Breakdown")
+    breakdown = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
+    st.json(breakdown)
+
+    # ================================
+    # Department Schedule + Heatmap
+    # ================================
+    st.subheader("Department Schedule & Heatmap")
+    shift_mapping = {"08:00-15:00": range(0, SHIFT_LENGTH),
+                     "15:00-22:00": range(14, 14+SHIFT_LENGTH)}
+    summary_rows = []
+
+    for dept in range(n_departments):
+        n_emp = n_employees_per_dept[dept]
+        employee_ids = [f"E{i+1}" for i in range(n_emp)]
+        off_schedule = best_off_schedules[dept]
+
+        st.markdown(f"### Department {dept+1}")
+        rows = []
+        heatmap_data = np.zeros((n_days, len(shift_mapping)))
+        total_shortage_dept = 0
+
+        for d in range(n_days):
+            for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
+                assigned_emps = set()
+                shortage_total_shift = 0
+                shortage_periods = {}
+
+                for t in period_range:
+                    if t >= n_periods:
+                        continue
+                    assigned = [employee_ids[e] for e in range(n_emp) if best_schedule[dept,d,t,e]==1]
+                    assigned_emps.update(assigned)
+                    shortage = DEMAND[dept,d,t] - len(assigned)
+                    if shortage > 0:
+                        shortage_periods[f"P{t+1}"] = shortage
+                        shortage_total_shift += shortage
+
+                off_today = [employee_ids[e] for e in range(n_emp) if off_schedule[e,d]==1]
+                heatmap_data[d, idx] = shortage_total_shift
+                total_shortage_dept += shortage_total_shift
+
+                rows.append([
+                    f"Day {d+1}", shift_label,
+                    ", ".join(sorted(assigned_emps)) or "-",
+                    ", ".join(off_today) or "-",
+                    ", ".join([f"{k}({v})" for k,v in shortage_periods.items()]) or "-"
+                ])
+
+        df_dept = pd.DataFrame(rows, columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage (People per Period)"])
+        st.dataframe(df_dept.style.applymap(
+            lambda v: "background-color:red;color:white" if v != "-" else "",
+            subset=["Shortage (People per Period)"]), use_container_width=True
+        )
+
+        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage_dept} people**")
+        summary_rows.append([f"Department {dept+1}", total_shortage_dept])
+
+        fig, ax = plt.subplots(figsize=(6,3))
+        ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
+        ax.set_xticks(range(len(shift_mapping)))
+        ax.set_xticklabels(list(shift_mapping.keys()))
+        ax.set_yticks(range(n_days))
+        ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
+        for i in range(n_days):
+            for j in range(len(shift_mapping)):
+                ax.text(j,i,int(heatmap_data[i,j]),ha="center",va="center")
+        st.pyplot(fig)
+
+    st.subheader("Summary Total Shortage per Department")
+    df_summary = pd.DataFrame(summary_rows, columns=["Department","Total Shortage (People)"])
+    st.dataframe(df_summary,use_container_width=True)
