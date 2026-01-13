@@ -267,71 +267,124 @@ if st.sidebar.button("Run ACO"):
 
     st.write(f"Algorithm stopped at iteration: {iters[-1]}")
     st.write(f"Overall Best Fitness: {min_fitness} at iteration {iters[min_index]}")
+    
+# ================================
+# Radar Chart - Constraint Balance
+# ================================
+st.subheader("🎯 Constraint Balance (Radar Chart)")
+bd = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
 
+cats = ['Shortage', 'Overwork', 'Min Days', 'Shift Break', 'Consecutive']
+vals = [bd['shortage'], bd['overwork'], bd['days_min'], bd['shift_break'], bd['nonconsec']]
 
-    # DISPLAY SCHEDULE + HEATMAP PER DEPARTMENT
+# Radar Setup
+N = len(cats)
+angles = [n / float(N) * 2 * np.pi for n in range(N)]
+angles += angles[:1]
+vals += vals[:1]
 
-    st.subheader("Department Schedule & Heatmap")
-    shift_mapping = {"08:00-15:00": range(0, SHIFT_LENGTH),
-                     "15:00-22:00": range(14, 14+SHIFT_LENGTH)}
+fig_radar, ax_radar = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+ax_radar.plot(angles, vals, linewidth=2, linestyle='solid', color='#E63946')
+ax_radar.fill(angles, vals, '#E63946', alpha=0.25)
+ax_radar.set_xticks(angles[:-1])
+ax_radar.set_xticklabels(cats)
+ax_radar.set_title("Penalty Distribution (Smaller shape is better)")
+st.pyplot(fig_radar)
 
-    summary_rows = []
-    for dept in range(n_departments):
-        n_emp = n_employees_per_dept[dept]
-        employee_ids = [f"E{i+1}" for i in range(n_emp)]
-        off_schedule = best_off_schedules[dept]
+# ================================
+# Pareto Front
+# ================================
+st.subheader("Pareto Front")  # show the non-dominant solution in all iteration
+p = np.array(pareto_data)
+fig, ax = plt.subplots()
+ax.scatter(p[:, 0], p[:, 1], alpha=0.6, label="Pareto points")
 
-        st.markdown(f"### Department {dept+1}")
-        rows = []
-        heatmap_data = np.zeros((n_days, len(shift_mapping)))
-        total_shortage_dept = 0
+# choose best schedule among the non-dominant solutions
+if best_idx is not None:
+    selected = p[best_idx]
+    ax.scatter(selected[0], selected[1], color='red', s=100, label="Chosen Best Schedule")
 
-        for d in range(n_days):
-            for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
-                assigned_emps = set()
-                shortage_total_shift = 0
-                shortage_periods = {}
+ax.set_xlabel("Total Shortage")
+ax.set_ylabel("Workload Penalty")
+ax.legend()
+st.pyplot(fig)
 
-                for t in period_range:
-                    if t >= n_periods: continue
-                    assigned = [employee_ids[e] for e in range(n_emp) if best_schedule[dept,d,t,e]==1]
-                    assigned_emps.update(assigned)
-                    shortage = DEMAND[dept,d,t] - len(assigned)
-                    if shortage > 0:
-                        shortage_periods[f"P{t+1}"] = shortage
-                        shortage_total_shift += shortage
+# ================================
+# Fitness Breakdown
+# ================================
+st.subheader("Fitness Breakdown")
+breakdown = compute_penalty_breakdown(best_schedule, DEMAND, max_hours)
+st.json(breakdown)
 
-                off_today = [employee_ids[e] for e in range(n_emp) if off_schedule[e,d]==1]
-                heatmap_data[d, idx] = shortage_total_shift
-                total_shortage_dept += shortage_total_shift
+# ================================
+# DISPLAY SCHEDULE + HEATMAP PER DEPARTMENT
+# ================================
+st.subheader("Department Schedule & Heatmap")
+shift_mapping = {"08:00-15:00": range(0, SHIFT_LENGTH),
+                 "15:00-22:00": range(14, 14+SHIFT_LENGTH)}
 
-                rows.append([f"Day {d+1}", shift_label,
-                             ", ".join(sorted(assigned_emps)) or "-",
-                             ", ".join(off_today) or "-",
-                             ", ".join([f"{k}({v})" for k,v in shortage_periods.items()]) or "-"])
+summary_rows = []
+for dept in range(n_departments):
+    n_emp = n_employees_per_dept[dept]
+    employee_ids = [f"E{i+1}" for i in range(n_emp)]
+    off_schedule = best_off_schedules[dept]
 
-        df_dept = pd.DataFrame(rows, columns=["Day","Shift","Employees Assigned","Employee Off","Shortage (People per Period)"])
-        st.dataframe(df_dept.style.applymap(lambda v: "background-color:red;color:white" if v!="-"
-                                            else "", subset=["Shortage (People per Period)"]),
-                     use_container_width=True)
+    st.markdown(f"### Department {dept+1}")
+    rows = []
+    heatmap_data = np.zeros((n_days, len(shift_mapping)))
+    total_shortage_dept = 0
 
-        st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage_dept} people**")
-        summary_rows.append([f"Department {dept+1}", total_shortage_dept])
+    for d in range(n_days):
+        for idx, (shift_label, period_range) in enumerate(shift_mapping.items()):
+            assigned_emps = set()
+            shortage_total_shift = 0
+            shortage_periods = {}
 
-        # Heatmap
-        st.markdown(f"Shortage Heatmap - Dept {dept+1}")
-        fig, ax = plt.subplots(figsize=(6,3))
-        ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
-        ax.set_xticks(range(len(shift_mapping)))
-        ax.set_xticklabels(list(shift_mapping.keys()))
-        ax.set_yticks(range(n_days))
-        ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
-        for i in range(n_days):
-            for j in range(len(shift_mapping)):
-                ax.text(j,i,int(heatmap_data[i,j]),ha="center",va="center")
-        st.pyplot(fig)
+            for t in period_range:
+                if t >= n_periods:
+                    continue
+                assigned = [employee_ids[e] for e in range(n_emp) if best_schedule[dept, d, t, e] == 1]
+                assigned_emps.update(assigned)
+                shortage = DEMAND[dept, d, t] - len(assigned)
+                if shortage > 0:
+                    shortage_periods[f"P{t+1}"] = shortage
+                    shortage_total_shift += shortage
 
-    # Summary Total Shortage per Department
-    st.subheader("Summary Total Shortage per Department")
-    df_summary = pd.DataFrame(summary_rows, columns=["Department","Total Shortage (People)"])
-    st.dataframe(df_summary,use_container_width=True)
+            off_today = [employee_ids[e] for e in range(n_emp) if off_schedule[e, d] == 1]
+            heatmap_data[d, idx] = shortage_total_shift
+            total_shortage_dept += shortage_total_shift
+
+            rows.append([
+                f"Day {d+1}", shift_label,
+                ", ".join(sorted(assigned_emps)) or "-",
+                ", ".join(off_today) or "-",
+                ", ".join([f"{k}({v})" for k, v in shortage_periods.items()]) or "-"
+            ])
+
+    df_dept = pd.DataFrame(rows, columns=["Day", "Shift", "Employees Assigned", "Employee Off", "Shortage (People per Period)"])
+    st.dataframe(df_dept.style.applymap(
+        lambda v: "background-color:red;color:white" if v != "-" else "",
+        subset=["Shortage (People per Period)"]),
+        use_container_width=True
+    )
+
+    st.markdown(f"**Total Shortage for Department {dept+1}: {total_shortage_dept} people**")
+    summary_rows.append([f"Department {dept+1}", total_shortage_dept])
+
+    # Heatmap
+    st.markdown(f"Shortage Heatmap - Dept {dept+1}")
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.imshow(heatmap_data, cmap="Reds", aspect="auto")
+    ax.set_xticks(range(len(shift_mapping)))
+    ax.set_xticklabels(list(shift_mapping.keys()))
+    ax.set_yticks(range(n_days))
+    ax.set_yticklabels([f"Day {i+1}" for i in range(n_days)])
+    for i in range(n_days):
+        for j in range(len(shift_mapping)):
+            ax.text(j, i, int(heatmap_data[i, j]), ha="center", va="center")
+    st.pyplot(fig)
+
+# Summary Total Shortage per Department
+st.subheader("Summary Total Shortage per Department")
+df_summary = pd.DataFrame(summary_rows, columns=["Department", "Total Shortage (People)"])
+st.dataframe(df_summary, use_container_width=True)
